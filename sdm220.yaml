@@ -1,0 +1,502 @@
+substitutions:
+  device_name: m5stack_cc704c_4172_sdm220
+  friendly_name: SDM220
+  tasmota_name: tasmota_CC704C
+
+esphome:
+  name: ${device_name}
+  #platform: ESP32
+  #board: m5stack-atom
+  platformio_options:
+    upload_speed: 115200
+  on_boot:
+    priority: 200  
+    then:
+      - wait_until:  
+          condition:
+            wifi.connected: 
+          timeout: 5s
+
+esp32:
+    board: m5stack-atom
+    ######## Workaroud fro CRC error
+    framework:
+      type: arduino
+      #version: 2.0.6
+      ##platform_version: platformio/espressif32 @ 3.5.0
+      ##version: 1.0.6
+      ######## Workaroud fro CRC error
+
+# Enable logging
+logger:
+  #level: INFO
+  baud_rate: 0
+
+external_components:
+  - source: my_components
+
+syslog:
+    ip_address: "192.168.2.32"
+    port: 514
+    strip_colors: true
+
+# Enable Home Assistant API
+api:
+  password: ""
+
+ota:
+  password: ""
+
+wifi:
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+    - ssid: !secret wifi_ssid_2
+      password: !secret wifi_password_2
+
+  manual_ip:
+    static_ip: 192.168.4.44
+    gateway: 192.168.2.1
+    subnet: 255.255.240.0
+    dns1: 8.8.8.8
+    dns2: 192.168.2.1
+
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "${device_name}"
+    password: "sAAGiW4YfU9F"
+
+web_server:
+  port: 80
+
+mqtt:
+  broker: 192.168.2.32
+  client_id: esphome_m5stack_220
+  discovery_retain: false
+  discovery_object_id_generator: device_name
+
+captive_portal:
+
+#time:
+#  - platform: sntp
+#    id: "${device_name}_time"
+#    servers:
+#       - 192.168.2.31
+#       - 192.168.2.1
+#    timezone: Europe/Rome
+
+# Sync time with Home Assistant.
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+light:
+  - platform: neopixelbus
+  #- platform: fastled_clockless
+    #chipset: WS2812B
+    #rgb_order: GRB
+    variant: SK6812
+    pin: 27
+    num_leds: 1
+    type: GRB
+    id: status_led
+    name: ${friendly_name} Light
+    color_correct: [50%, 50%, 50%]
+    #effects:
+    #  - random:
+    #  - flicker:
+    #      #name: Flicker Effect With Custom Values
+    #      #alpha: 95%
+    #      #intensity: 1.5%
+    #  - addressable_rainbow:
+    on_turn_on:
+      then:
+       - mqtt.publish_json:
+           topic: domoticz/in
+           payload: |-
+             root["type"] = "command";
+             root["param"] = "udevice";
+             root["idx"] = 409;
+             root["nvalue"] = 1;
+             root["parsetrigger"] = "false";
+    on_turn_off:
+      then:
+       - mqtt.publish_json:
+           topic: domoticz/in
+           payload: |-
+             root["type"] = "command";
+             root["param"] = "udevice";
+             root["idx"] = 409;
+             root["nvalue"] = 0;
+             root["parsetrigger"] = "false";
+
+button:
+      - platform: restart
+        id: ${tasmota_name}_restart_button
+        name: "${friendly_name} Restart"
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: 39
+      inverted: true
+    name: ${friendly_name} Button
+    on_click:
+      - min_length: 200ms
+        max_length: 900ms
+        then:
+          - light.toggle: status_led
+      - min_length: 1000ms
+        max_length: 5000ms
+        then:
+          - button.press: ${tasmota_name}_restart_button  
+    #on_press:
+    #  then:
+    #    - light.toggle: status_led
+
+uart:
+  rx_pin: GPIO22
+  tx_pin: GPIO19
+  baud_rate: 9600
+  stop_bits: 1
+  rx_buffer_size: 384
+  #debug:
+
+modbus:
+  send_wait_time: 500ms
+
+#i2c:
+#  sda: GPIO25
+#  scl: GPIO21
+#  scan: true
+#  frequency: 100kHz # (Optional, float): Set the frequency the I²C bus should operate on. Defaults to 50kHz. Values are 10kHz, 50kHz, 100kHz, 200kHz, … 800kHz
+#  id: ${device_name}_bus_a
+
+sensor:
+  - platform: wifi_signal
+    name: "$friendly_name WiFi Signal"
+    update_interval: 60s
+
+  - platform: sdm_meter
+    address: 10
+    total_power: 
+      name: "${friendly_name} Total Power"
+      id: ${device_name}_total_power
+      unit_of_measurement: "W"
+      device_class: power
+    phase_a:
+      current:
+        name: "${friendly_name} Current"
+        id: ${device_name}_current
+        unit_of_measurement: "A"
+        device_class: current
+        on_value:
+          then:
+            - mqtt.publish:
+                topic: domoticz/in
+                payload: !lambda |-
+                   std::string messageO;
+                   char str[16];
+                   snprintf(str, sizeof(str), "%.2f", x);
+                   messageO += "{\"idx\":440,\"nvalue\":0,\"svalue\":\"";
+                   messageO += str;
+                   messageO += "\"}";
+                   return messageO;
+      voltage:
+        name: "${friendly_name} Voltage"
+        id: ${device_name}_voltage
+        unit_of_measurement: "V"
+        device_class: voltage
+        on_value:
+          then:
+            - mqtt.publish:
+                topic: domoticz/in
+                payload: !lambda |-
+                   std::string messageO;
+                   char str[16];
+                   snprintf(str, sizeof(str), "%.2f", x);
+                   messageO += "{\"idx\":439,\"nvalue\":0,\"svalue\":\"";
+                   messageO += str;
+                   messageO += "\"}";
+                   return messageO;
+      active_power:
+        name: "${friendly_name} Power"
+        id: ${device_name}_active_power
+        unit_of_measurement: "W"
+        device_class: power
+        on_value:
+          then:
+            - mqtt.publish:
+                topic: domoticz/in
+                payload: !lambda |-
+                   std::string messageO;
+                   char str[16];
+                   snprintf(str, sizeof(str), "%.2f", x);
+                   messageO += "{\"idx\":438,\"nvalue\":0,\"svalue\":\"";
+                   messageO += str;
+                   messageO += "\"}";
+                   return messageO;
+      power_factor:
+        name: "${friendly_name} Factor"
+        id: ${device_name}_factor
+        device_class: power_factor
+        on_value:
+          then:
+            - mqtt.publish:
+                topic: domoticz/in
+                payload: !lambda |-
+                   std::string messageO;
+                   char str[16];
+                   snprintf(str, sizeof(str), "%.2f", x);
+                   messageO += "{\"idx\":443,\"nvalue\":0,\"svalue\":\"";
+                   messageO += str;
+                   messageO += "\"}";
+                   return messageO;
+      apparent_power:
+        name: "${friendly_name} ApparentPower"
+        id: ${device_name}_apparent_power
+        unit_of_measurement: "VA"
+        device_class: "apparent_power"
+        on_value:
+          then:
+            - mqtt.publish:
+                topic: domoticz/in
+                payload: !lambda |-
+                   std::string messageO;
+                   char str[16];
+                   snprintf(str, sizeof(str), "%.2f", x);
+                   messageO += "{\"idx\":441,\"nvalue\":0,\"svalue\":\"";
+                   messageO += str;
+                   messageO += "\"}";
+                   return messageO;
+      reactive_power:
+        name: "${friendly_name} ReactivePower"
+        id: ${device_name}_reactive_power
+        device_class: "reactive_power"
+        unit_of_measurement: "var"
+        on_value:
+          then:
+            - mqtt.publish:
+                topic: domoticz/in
+                payload: !lambda |-
+                   std::string messageO;
+                   char str[16];
+                   snprintf(str, sizeof(str), "%.2f", x);
+                   messageO += "{\"idx\":442,\"nvalue\":0,\"svalue\":\"";
+                   messageO += str;
+                   messageO += "\"}";
+                   return messageO;
+      phase_angle:
+        name: "${friendly_name} cosPhi"
+        id: ${device_name}_phase_angle
+        #device_class: phase_angle
+    frequency:
+        name: "${friendly_name} Frequency"
+        id: ${device_name}_frequency_2
+        device_class: "frequency"
+        on_value:
+          then:
+            - mqtt.publish:
+                topic: domoticz/in
+                payload: !lambda |-
+                   std::string messageO;
+                   char str[16];
+                   snprintf(str, sizeof(str), "%.2f", x);
+                   messageO += "{\"idx\":445,\"nvalue\":0,\"svalue\":\"";
+                   messageO += str;
+                   messageO += "\"}";
+                   return messageO;
+    import_active_energy:
+        name: "${friendly_name} AcEnergy_Import"
+        id: ${device_name}_total
+        unit_of_measurement: "Wh"
+        filters:
+          - multiply: 1000
+        on_value:
+          then:
+            - mqtt.publish:
+                topic: domoticz/in
+                payload: !lambda |-
+                   std::string messageO;
+                   char str[16];
+                   snprintf(str, sizeof(str), "%.2f", x);
+                   messageO += "{\"idx\":437,\"nvalue\":0,\"svalue\":\"";
+                   messageO += str;
+                   messageO += "\"}";
+                   return messageO;
+            - mqtt.publish:
+                topic: domoticz/in
+                payload: !lambda |-
+                   std::string messageO;
+                   char str[16];
+                   snprintf(str, sizeof(str), "%.2f", x);
+                   messageO += "{\"idx\":446,\"nvalue\":0,\"svalue\":\"";
+                   messageO += str;
+                   messageO += "\"}";
+                   return messageO;
+    export_active_energy:
+      name: "${friendly_name} AcEnergy_Export"
+      id: ${device_name}_export_active_energy
+      unit_of_measurement: "Wh"
+    import_reactive_energy:
+      name: "${friendly_name} ReEnergy_Import"
+      id: ${device_name}_import_reactive_energy
+      unit_of_measurement: "VArh"
+    export_reactive_energy:
+      name: "${friendly_name} ReEnergy_Export"
+      id: ${device_name}_export_reactive_energy
+      unit_of_measurement: "VArh"
+    update_interval: 60s
+
+  - platform: template
+    id: ${device_name}_esp32_temperature
+    name: "${friendly_name} Temperature"
+    lambda: return temperatureRead();
+    device_class: temperature
+    unit_of_measurement: "°C"
+    state_class: "measurement"
+    accuracy_decimals: 1
+    on_value:
+      then:
+         - mqtt.publish_json:
+             topic: domoticz/in
+             payload: |-
+                root["idx"] = 410;
+                root["nvalue"] = 0;
+                root["svalue"] =  to_string(id(${device_name}_esp32_temperature).state);
+
+#  - platform: mpu6886
+#    address: 0x68
+#    i2c_id: ${device_name}_bus_a
+#    accel_x:
+#      name: "${friendly_name} Accel X"
+#    accel_y:
+#      name: "${friendly_name} Accel Y"
+#    accel_z:
+#      name: "${friendly_name} Accel z"
+#    gyro_x:
+#      name: "${friendly_name} Gyro X"
+#    gyro_y:
+#      name: "${friendly_name} Gyro Y"
+#    gyro_z:
+#      name: "${friendly_name} Gyro z"
+#    temperature:
+#      name: "${friendly_name} Temperature"
+#      id: ${device_name}_esp32_temperature
+#      device_class: temperature
+#      unit_of_measurement: "°C"
+#      state_class: "measurement"
+#      accuracy_decimals: 1
+#      on_value:
+#        then:
+#         - logger.log:
+#              format: "The temperature sensor reports value %.1f"
+#              args: [ 'id(${device_name}_esp32_temperature).state' ]
+#         - mqtt.publish_json:
+#             topic: domoticz/in
+#             payload: |-
+#                root["idx"] = 410;
+#                root["nvalue"] = 0;
+#                root["svalue"] =  to_string(id(${device_name}_esp32_temperature).state);
+
+  - platform: uptime
+    name: "${friendly_name} Uptime"
+    id: ${tasmota_name}_uptime_sensor
+    update_interval: 60s
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: ${tasmota_name}_uptime_human
+            state: !lambda |-
+              int seconds = round(id(${tasmota_name}_uptime_sensor).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds = seconds % (24 * 3600);
+              int hours = seconds / 3600;
+              seconds = seconds % 3600;
+              int minutes = seconds /  60;
+              seconds = seconds % 60;
+              return (
+                (days ? to_string(days) + "d " : "") +
+                (hours ? to_string(hours) + "h " : "") +
+                (minutes ? to_string(minutes) + "m " : "") +
+                (to_string(seconds) + "s")
+              ).c_str();
+
+  - platform: total_daily_energy
+    name: "${friendly_name} Total Daily Energy"
+    power_id: ${device_name}_active_power
+    id: ${device_name}_total_daily_energy
+    filters:
+        # Multiplication factor from W to kW is 0.001
+      - multiply: 0.001
+    unit_of_measurement: kWh
+    accuracy_decimals: 3
+
+interval:
+  - interval: 30s
+    then:
+      - mqtt.publish_json:
+          topic: tele/tasmota_CC704C/SENSOR
+          payload: |-
+                   root["SDM220"]["Total"] = id(${device_name}_total).state;
+                   root["SDM220"]["Power"] = id(${device_name}_active_power).state;
+                   root["SDM220"]["Voltage"] = id(${device_name}_voltage).state;
+                   root["SDM220"]["Current"] = id(${device_name}_current).state;
+                   root["SDM220"]["ApparentPower"] = id(${device_name}_apparent_power).state;
+                   root["SDM220"]["ReactivePower"] = id(${device_name}_reactive_power).state;
+                   root["SDM220"]["Factor"] = id(${device_name}_factor).state;
+                   root["SDM220"]["cosPhi"] = id(${device_name}_phase_angle).state;
+                   root["SDM220"]["Frequency"] = id(${device_name}_frequency_2).state;
+                   root["SDM220"]["AcEnergy_Import"] = id(${device_name}_total).state;
+                   root["SDM220"]["AcEnergy_Export"] = id(${device_name}_export_active_energy).state;
+                   root["SDM220"]["ReEnergy_Import"] = id(${device_name}_import_reactive_energy).state;
+                   root["SDM220"]["ReEnergy_Export"] = id(${device_name}_export_reactive_energy).state;
+                   root["SDM220"]["Total_kWh"] = id(${device_name}_total).state;
+
+
+text_sensor:
+  - platform: template
+    name: "${friendly_name} Usage"
+    #description: Power + Energy usage to send to domoticz idx
+    lambda: |-
+      if (id(${device_name}_active_power).state > 0 and id(${device_name}_total).state > 0) {
+        char str[20];
+        snprintf(str, sizeof(str), "%.2f;%.2f", id(${device_name}_active_power).state, id(${device_name}_total).state);
+        ESP_LOGD("text_sensor", "Creating ${friendly_name} Usage %s", str);
+        return { str };
+      } else {
+        return {""};
+      }
+    on_value:
+          then:
+            - mqtt.publish:
+                topic: domoticz/in
+                payload: !lambda |-
+                   std::string messageO;
+                   messageO += "{\"idx\":444,\"nvalue\":0,\"svalue\":\"";
+                   messageO += x;
+                   messageO += "\"}";
+                   return messageO;
+    update_interval: 60s
+
+  - platform: version
+    name: "${friendly_name} ESPHome Version"
+
+  # Expose WiFi information as sensors.
+  - platform: wifi_info
+    ip_address:
+      name: ${device_name} IP
+    ssid:
+      name: ${device_name} SSID
+    bssid:
+      name: ${device_name} BSSID
+    mac_address:
+      name: ${device_name} MAC
+    scan_results:
+      name: ${device_name} Latest Scan Results
+
+  - platform: template
+    name: ${friendly_name} Uptime Human Readable
+    id: ${tasmota_name}_uptime_human
+    icon: mdi:clock-start

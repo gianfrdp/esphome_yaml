@@ -1,0 +1,512 @@
+substitutions:
+  device_name: "jk-bms"
+  device_description: "Monitor and control a JK-BMS via bluetooth and send data to inverter"
+  friendly_name: JK BMS to Voltronic
+  name: ${device_name}
+  device_id: jkbms_voltronic
+  bms_client: client0
+  jk_bms_ble_id: bms0
+  mac_address: C8:47:8C:EC:BF:F3
+  # Defaults to "JK02"
+  # Please use "JK02_32S" if you own a JK-B2A8S20P >= hardware version 11+ (f.e. JK-B2A8S20P hw 11.XW, sw 11.26)
+  # Please use "JK04" if you have some old JK-BMS <= hardware version 3 (f.e. JK-B2A16S hw 3.0, sw. 3.3.0)
+  protocol_version: JK02_32S
+
+esphome:
+  name: ${device_name}
+  comment: ${device_description}
+  platformio_options:
+    upload_speed: 115200
+    build_flags:
+      - -DCONFIG_ARDUINO_LOOP_STACK_SIZE=32768
+  project:
+    name: "Syssi.esphome-jk-bms"
+    version: 1.4.0
+
+  #on_boot:
+  #  priority: 200
+  #  then:
+  #    - wait_until:
+  #        condition:
+  #          wifi.connected:
+  #        timeout: 5s
+
+esp32:
+  board: m5stack-atom
+  #framework:
+  #  type: esp-idf
+
+external_components:
+  - source: github://syssi/esphome-jk-bms@main
+    refresh: 0s
+  #- source: github://spali/esphome@pr3500
+  #  components:
+  #    - web_server
+  #    - web_server_idf
+  #    - web_server_base
+  #    - captive_portal
+  #  refresh: 0s
+
+web_server:
+  local: false
+
+captive_portal:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  manual_ip:
+    static_ip: 192.168.4.56
+    gateway: 192.168.2.1
+    subnet: 255.255.240.0
+    dns1: 192.168.2.1
+    dns2: 8.8.8.8
+
+  domain: .firtzbox
+  reboot_timeout: 15min
+
+  ap:
+    ssid: "${name}"
+    password: "sAAGiW4YfU9F"
+
+time:
+  - platform: sntp
+    id: sntp_time
+    #servers: 192.168.2.1
+    #timezone: Europe/Rome
+  #- platform: homeassistant
+  #  id: homeassistant_time
+
+ota:
+
+logger:
+  level: DEBUG
+  logs:
+    esp32_ble_tracker: INFO
+    esp-idf: INFO
+    jk_bms_ble: INFO
+    scheduler: INFO
+    component: INFO
+    sensor: INFO
+    mqtt: INFO
+    mqtt.idf: INFO
+    mqtt.component: INFO
+    mqtt.sensor: INFO
+    mqtt.switch: INFO
+    api.service: INFO
+    api: INFO
+  
+
+# If you don't use Home Assistant please remove this `api` section and uncomment the `mqtt` component!
+api:
+
+#mqtt:
+#  broker: 192.168.2.32
+#  client_id: ${device_id}
+#  discovery_retain: false
+#  discovery_object_id_generator: device_name
+
+esp32_ble_tracker:
+#  on_ble_advertise:
+#    then:
+#      - lambda: |-
+#          if (x.get_name().rfind("JK-", 0) == 0) {
+#            ESP_LOGI("ble_adv", "New JK-BMS found");
+#            ESP_LOGI("ble_adv", "  Name: %s", x.get_name().c_str());
+#            ESP_LOGI("ble_adv", "  MAC address: %s", x.address_str().c_str());
+#            ESP_LOGD("ble_adv", "  Advertised service UUIDs:");
+#            for (auto uuid : x.get_service_uuids()) {
+#              ESP_LOGD("ble_adv", "    - %s", uuid.to_string().c_str());
+#            }
+#          }
+
+ble_client:
+  - mac_address: ${mac_address}
+    id: ${bms_client}
+
+jk_bms_ble:
+  - ble_client_id: ${bms_client}
+    protocol_version: ${protocol_version}
+    #throttle: 5s
+    throttle: 10s
+    id: ${jk_bms_ble_id}
+
+binary_sensor:
+  #- platform: gpio
+  #  pin:
+  #    number: 39
+  #    inverted: true
+  #  name: Button
+  #  on_click:
+  #    #- min_length: 200ms
+  #    #  max_length: 900ms
+  #    #  then:
+  #    #    - light.toggle: status_led
+  #    - min_length: 1000ms
+  #      max_length: 5000ms
+  #      then:
+  #        - button.press: ${device_id}_restart_button
+  #  #on_press:
+  #  #  then:
+  #  #    - light.toggle: status_led
+
+  - platform: jk_bms_ble
+    balancing:
+      id: ${jk_bms_ble_id}_balancing
+      name: "Balancing"
+    charging:
+      id: ${jk_bms_ble_id}_charging
+      name: "Charging"
+    discharging:
+      id: ${jk_bms_ble_id}_discharging
+      name: "Discharging"
+    online_status:
+      id: ${jk_bms_ble_id}_online_status
+      name: "Online status"
+
+button:
+  - platform: jk_bms_ble
+    retrieve_settings:
+      id: ${jk_bms_ble_id}_retrieve_settings_btn
+      name: "Retrieve settings"
+    retrieve_device_info:
+      id: ${jk_bms_ble_id}_retrieve_device_info_btn
+      name: "Retrieve device info"
+
+  - platform: restart
+    id: ${device_id}_restart_button
+    name: "Restart"
+
+number:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: ${jk_bms_ble_id}
+    balance_trigger_voltage:
+      id: ${jk_bms_ble_id}_balance_trigger_voltage
+      name: "Balance trigger voltage"
+    cell_count:
+      id: ${jk_bms_ble_id}_cell_count
+      name: "Cell count"
+    total_battery_capacity:
+      id: ${jk_bms_ble_id}_total_battery_capacity
+      name: "Total battery capacity"
+    cell_voltage_overvoltage_protection:
+      id: ${jk_bms_ble_id}_cell_voltage_overvoltage_protection
+      name: "Cell voltage overvoltage protection"
+    cell_voltage_overvoltage_recovery:
+      id: ${jk_bms_ble_id}_cell_voltage_overvoltage_recovery
+      name: "Cell voltage overvoltage recovery"
+    cell_voltage_undervoltage_protection:
+      id: ${jk_bms_ble_id}_cell_voltage_undervoltage_protection
+      name: "Cell voltage undervoltage protection"
+    cell_voltage_undervoltage_recovery:
+      id: ${jk_bms_ble_id}_cell_voltage_undervoltage_recovery
+      name: "Cell voltage undervoltage recovery"
+    balance_starting_voltage:
+      id: ${jk_bms_ble_id}_balance_starting_voltage
+      name: "Balance starting voltage"
+    voltage_calibration:
+      id: ${jk_bms_ble_id}_voltage_calibration
+      name: "Voltage calibration"
+    current_calibration:
+      id: ${jk_bms_ble_id}_current_calibration
+      name: "Current calibration"
+    power_off_voltage:
+      id: ${jk_bms_ble_id}_power_off_voltage
+      name: "Power off voltage"
+    max_balance_current:
+      id: ${jk_bms_ble_id}_max_balance_current
+      name: "Max balance current"
+    max_charge_current:
+      id: ${jk_bms_ble_id}_max_charge_current
+      name: "Max charge current"
+    max_discharge_current:
+      id: ${jk_bms_ble_id}_max_discharge_current
+      name: "Max discharge current"
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 300s
+  - platform: uptime
+    name: "Uptime"
+    id: ${device_id}_uptime_sensor
+    update_interval: 300s
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: ${device_id}_uptime_human
+            state: !lambda |-
+              int seconds = round(id(${device_id}_uptime_sensor).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds = seconds % (24 * 3600);
+              int hours = seconds / 3600;
+              seconds = seconds % 3600;
+              int minutes = seconds /  60;
+              seconds = seconds % 60;
+              return (
+                      (days ? to_string(days) + "d " : "") +
+                      (hours ? to_string(hours) + "h " : "") +
+                      (minutes ? to_string(minutes) + "m " : "") +
+                      (to_string(seconds) + "s")
+                    ).c_str();
+
+  - platform: jk_bms_ble
+    jk_bms_ble_id: ${jk_bms_ble_id}
+    min_cell_voltage:
+      id: ${jk_bms_ble_id}_min_cell_voltage
+      name: "Min cell voltage"
+    max_cell_voltage:
+      id: ${jk_bms_ble_id}_max_cell_voltage
+      name: "Max cell voltage"
+    min_voltage_cell:
+      id: ${jk_bms_ble_id}_min_voltage_cell
+      name: "Min voltage cell"
+    max_voltage_cell:
+      id: ${jk_bms_ble_id}_max_voltage_cell
+      name: "Max voltage cell"
+    delta_cell_voltage:
+      id: ${jk_bms_ble_id}_delta_cell_voltage
+      name: "Delta cell voltage"
+    average_cell_voltage:
+      id: ${jk_bms_ble_id}_average_cell_voltage
+      name: "Average cell voltage"
+    cell_voltage_1:
+      id: ${jk_bms_ble_id}_cell_voltage_1
+      name: "Cell voltage 1"
+    cell_voltage_2:
+      id: ${jk_bms_ble_id}_cell_voltage_2
+      name: "Cell voltage 2"
+    cell_voltage_3:
+      id: ${jk_bms_ble_id}_cell_voltage_3
+      name: "Cell voltage 3"
+    cell_voltage_4:
+      id: ${jk_bms_ble_id}_cell_voltage_4
+      name: "Cell voltage 4"
+    cell_voltage_5:
+      id: ${jk_bms_ble_id}_cell_voltage_5
+      name: "Cell voltage 5"
+    cell_voltage_6:
+      id: ${jk_bms_ble_id}_cell_voltage_6
+      name: "Cell voltage 6"
+    cell_voltage_7:
+      id: ${jk_bms_ble_id}_cell_voltage_7
+      name: "Cell voltage 7"
+    cell_voltage_8:
+      id: ${jk_bms_ble_id}_cell_voltage_8
+      name: "Cell voltage 8"
+    cell_voltage_9:
+      id: ${jk_bms_ble_id}_cell_voltage_9
+      name: "Cell voltage 9"
+    cell_voltage_10:
+      id: ${jk_bms_ble_id}_cell_voltage_10
+      name: "Cell voltage 10"
+    cell_voltage_11:
+      id: ${jk_bms_ble_id}_cell_voltage_11
+      name: "Cell voltage 11"
+    cell_voltage_12:
+      id: ${jk_bms_ble_id}_cell_voltage_12
+      name: "Cell voltage 12"
+    cell_voltage_13:
+      id: ${jk_bms_ble_id}_cell_voltage_13
+      name: "Cell voltage 13"
+    cell_voltage_14:
+      id: ${jk_bms_ble_id}_cell_voltage_14
+      name: "Cell voltage 14"
+    cell_voltage_15:
+      id: ${jk_bms_ble_id}_cell_voltage_15
+      name: "Cell voltage 15"
+    cell_voltage_16:
+      id: ${jk_bms_ble_id}_cell_voltage_16
+      name: "Cell voltage 16"
+    cell_resistance_1:
+      id: ${jk_bms_ble_id}_cell_resistance_1
+      name: "Cell resistance 1"
+    cell_resistance_2:
+      id: ${jk_bms_ble_id}_cell_resistance_2
+      name: "Cell resistance 2"
+    cell_resistance_3:
+      id: ${jk_bms_ble_id}_cell_resistance_3
+      name: "Cell resistance 3"
+    cell_resistance_4:
+      id: ${jk_bms_ble_id}_cell_resistance_4
+      name: "Cell resistance 4"
+    cell_resistance_5:
+      id: ${jk_bms_ble_id}_cell_resistance_5
+      name: "Cell resistance 5"
+    cell_resistance_6:
+      id: ${jk_bms_ble_id}_cell_resistance_6
+      name: "Cell resistance 6"
+    cell_resistance_7:
+      id: ${jk_bms_ble_id}_cell_resistance_7
+      name: "Cell resistance 7"
+    cell_resistance_8:
+      id: ${jk_bms_ble_id}_cell_resistance_8
+      name: "Cell resistance 8"
+    cell_resistance_9:
+      id: ${jk_bms_ble_id}_cell_resistance_9
+      name: "Cell resistance 9"
+    cell_resistance_10:
+      id: ${jk_bms_ble_id}_cell_resistance_10
+      name: "Cell resistance 10"
+    cell_resistance_11:
+      id: ${jk_bms_ble_id}_cell_resistance_11
+      name: "Cell resistance 11"
+    cell_resistance_12:
+      id: ${jk_bms_ble_id}_cell_resistance_12
+      name: "Cell resistance 12"
+    cell_resistance_13:
+      id: ${jk_bms_ble_id}_cell_resistance_13
+      name: "Cell resistance 13"
+    cell_resistance_14:
+      id: ${jk_bms_ble_id}_cell_resistance_14
+      name: "Cell resistance 14"
+    cell_resistance_15:
+      id: ${jk_bms_ble_id}_cell_resistance_15
+      name: "Cell resistance 15"
+    cell_resistance_16:
+      id: ${jk_bms_ble_id}_cell_resistance_16
+      name: "Cell resistance 16"
+    total_voltage:
+      id: ${jk_bms_ble_id}_total_voltage
+      name: "Total voltage"
+    current:
+      id: ${jk_bms_ble_id}_current
+      name: "Current"
+    power:
+      id: ${jk_bms_ble_id}_power
+      name: "Power"
+    charging_power:
+      id: ${jk_bms_ble_id}_charging_power
+      name: "Charging power"
+      unit_of_measurement: W
+      device_class: energy
+      state_class: measurement
+      entity_category: diagnostic
+    discharging_power:
+      id: ${jk_bms_ble_id}_discharging_power
+      name: "Discharging power"
+      unit_of_measurement: W
+      device_class: energy
+      state_class: measurement
+      entity_category: diagnostic
+    temperature_sensor_1:
+      id: ${jk_bms_ble_id}_temperature_sensor_1
+      name: "Temperature sensor 1"
+    temperature_sensor_2:
+      id: ${jk_bms_ble_id}_temperature_sensor_2
+      name: "Temperature sensor 2"
+    power_tube_temperature:
+      id: ${jk_bms_ble_id}_power_tube_temperature
+      name: "Power tube temperature"
+    state_of_charge:
+      id: ${jk_bms_ble_id}_soc
+      name: "State of charge"
+    capacity_remaining:
+      id: ${jk_bms_ble_id}_capacity_remaining
+      name: "Capacity remaining"
+    total_battery_capacity_setting:
+      id: ${jk_bms_ble_id}_total_battery_capacity_setting
+      name: "Total battery capacity setting"
+    charging_cycles:
+      id: ${jk_bms_ble_id}_charging_cycles
+      name: "Charging cycles"
+    total_charging_cycle_capacity:
+      id: ${jk_bms_ble_id}_total_charging_cycle_capacity
+      name: "Total charging cycle capacity"
+      # Convert Ah to kAh
+      state_class: "total_increasing"
+      unit_of_measurement: kAh
+      icon: mdi:counter
+      accuracy_decimals: 3
+      filters:
+        - multiply: 0.001
+    total_runtime:
+      id: ${jk_bms_ble_id}_total_runtime
+      name: "Total runtime"
+    balancing_current:
+      id: ${jk_bms_ble_id}_balancing_current
+      name: "Balancing current"
+    errors_bitmask:
+      id: ${jk_bms_ble_id}_errors_bitmask
+      name: "errors bitmask"
+
+  - platform: total_daily_energy
+    name: "Total Charging Energy Today"
+    power_id: ${jk_bms_ble_id}_charging_power
+    unit_of_measurement: kWh
+    icon: mdi:counter
+    accuracy_decimals: 3
+    restore: true
+    filters:
+      - multiply: 0.001
+
+  - platform: total_daily_energy
+    name: "Total Discharging Energy Today"
+    power_id: ${jk_bms_ble_id}_discharging_power
+    unit_of_measurement: kWh
+    icon: mdi:counter
+    accuracy_decimals: 3
+    restore: true
+    filters:
+      - multiply: 0.001
+
+switch:
+  - platform: jk_bms_ble
+    charging:
+      id: ${jk_bms_ble_id}_charging_switch
+      name: "Charging"
+    discharging:
+      id: ${jk_bms_ble_id}_discharging_switch
+      name: "Discharging"
+    balancer:
+      id: ${jk_bms_ble_id}_balancer_switch
+      name: "Balancer"
+    emergency:
+      id: ${jk_bms_ble_id}_emergency_switch
+      name: "emergency"
+    disable_temperature_sensors:
+      id: ${jk_bms_ble_id}_disable_temperature_sensors_switch
+      name: "Disable temperature sensors"
+    display_always_on:
+      id: ${jk_bms_ble_id}_display_always_on_switch
+      name: "Display always on"
+
+  - platform: ble_client
+    ble_client_id: ${bms_client}
+    id: ${jk_bms_ble_id}_bluetooth_switch
+    name: "enable bluetooth connection"
+
+text_sensor:
+  - platform: version
+    name: "ESPHome Version"
+
+  - platform: wifi_info
+    ip_address:
+      name: "${device_name} IP"
+      update_interval: 120s
+    ssid:
+      name: "${device_name} SSID"
+      update_interval: 120s
+    bssid:
+      name: "${device_name} BSSID"
+      update_interval: 120s
+    mac_address:
+      name: "${device_name} MAC"
+    scan_results:
+      name: "${device_name} Latest Scan Results"
+      update_interval: 120s
+
+  - platform: template
+    name: "Uptime Human Readable"
+    id: ${device_id}_uptime_human
+    icon: mdi:clock-start
+    update_interval: 120s
+
+  - platform: jk_bms_ble
+    errors:
+      id: ${jk_bms_ble_id}_errors
+      name: "errors"
+    total_runtime_formatted:
+      id: ${jk_bms_ble_id}_total_runtime_formatted
+      name: "Total runtime formatted"

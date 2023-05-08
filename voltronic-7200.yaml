@@ -1,0 +1,1176 @@
+substitutions:
+  device_name: "voltronic-7200"
+  friendly_name: Axpert Max 7.2
+  name: Voltronic
+  device_id: axpert_max_72
+
+esphome:
+  name: ${device_name}
+  #platform: ESP32
+  #board: m5stack-atom
+  platformio_options:
+    upload_speed: 115200
+    build_flags: 
+      - -DCONFIG_ARDUINO_LOOP_STACK_SIZE=32768
+
+  #on_boot:
+  #  priority: 200  
+  #  then:
+  #    - wait_until:  
+  #        condition:
+  #          wifi.connected: 
+  #        timeout: 5s
+
+esp32:
+    board: m5stack-atom
+    #board: m5stack-atoms3 
+    ######## Workaroud fro CRC error
+    #framework:
+    #  type: arduino
+    #  version: 2.0.6
+    #  #platform_version: platformio/espressif32 @ 3.5.0
+    #  #version: 1.0.6
+    #  ######## Workaroud fro CRC error
+
+logger:
+  level: DEBUG
+  #baud_rate: 0
+  logs:
+    binary_sensor: INFO
+    gpio.binary_sensor: INFO
+    homeassistant.time: INFO
+    light: INFO
+    main: INFO
+    mdns: INFO
+    mqtt: INFO
+    ota: INFO
+    pipsolar.select: DEBUG
+    pipsolar.switch: INFO
+    pipsolar.text: INFO
+    pipsolar: INFO
+    restart.button: INFO
+    select: INFO
+    sensor: INFO
+    switch: INFO
+    template: INFO
+    text_sensor: INFO
+    time: INFO
+    total_daily_energy: INFO
+    uart: DEBUG
+    uart_debug: DEBUG
+    uptime.sensor: INFO
+    version.text_sensor: INFO
+    web_server_base: INFO
+    web_server: INFO
+    wifi: INFO
+    wifi_info: INFO
+    wifi_signal.sensor: INFO
+
+external_components:
+  - source: my_components
+  - source: 
+      type: local
+      path: esphome-pipsolar/components
+    components: [ pipsolar ]
+  #- source: github://syssi/esphome-pipsolar@pip8048
+  #  refresh: 0s
+    
+syslog:
+    ip_address: "192.168.2.32"
+    port: 514
+    strip_colors: true
+
+api:
+  reboot_timeout: 15min
+
+ota:
+
+wifi:
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+    #- ssid: !secret wifi_ssid_2
+    #  password: !secret wifi_password_2
+  
+  #use_address: 192.168.4.46
+  
+  manual_ip:
+    static_ip: 192.168.4.46
+    gateway: 192.168.2.1
+    subnet: 255.255.240.0
+    dns1: 192.168.2.1
+    dns2: 8.8.8.8
+
+  domain: .firtzbox
+  reboot_timeout: 15min
+
+  ap:
+    ssid: "${device_name}"
+    password: "sAAGiW4YfU9F"
+
+web_server:
+  port: 80
+
+mqtt:
+  broker: 192.168.2.32
+  client_id: esphome_voltronic
+  discovery_retain: false
+  discovery_object_id_generator: device_name
+
+#captive_portal:
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+light:
+# - platform: fastled_clockless
+#   chipset: WS2812C
+#   rgb_order: GRB
+#   pin: 35
+  - platform: neopixelbus
+    variant: SK6812
+    pin: 27
+    num_leds: 1
+    type: GRB
+    id: status_led
+    name: Light
+    color_correct: [50%, 50%, 50%]
+
+button:
+      - platform: restart
+        id: ${device_id}_restart_button
+        name: "Restart"
+
+uart:
+  - id: uart_bus
+    rx_pin: GPIO22
+    tx_pin: GPIO19
+    #rx_pin: GPIO5
+    #tx_pin: GPIO6
+    baud_rate: 2400
+    #debug:
+    #    direction: BOTH
+    #    dummy_receiver: false
+    #    after:
+    #      delimiter: "\n"
+    #    sequence:
+    #       - lambda: UARTDebug::log_string(direction, bytes);
+
+pipsolar:
+  - uart_id: uart_bus
+    id: ${device_id}
+    #update_interval: 30s
+    update_interval: 10s
+
+globals:
+  - id: ${device_id}_global_pv1_power
+    type: float
+    restore_value: no
+    initial_value: '0'
+  - id: ${device_id}_global_pv2_power
+    type: float
+    restore_value: no
+    initial_value: '0'
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 300s
+
+  - platform: template
+    id: ${device_id}_pv_power
+    name: "PV Power"
+    state_class: measurement
+    device_class: power
+    unit_of_measurement: W
+    icon: 'mdi:solar-power'
+    lambda: |-
+      return float(id(${device_id}_global_pv1_power)) + float(id(${device_id}_global_pv2_power));
+    update_interval: 15s
+
+  - platform: total_daily_energy
+    name: "Total Daily Output Energy"
+    power_id: ${device_id}_ac_output_active_power
+    id: ${device_id}_total_daily_output_energy
+    method: trapezoid
+    device_class: energy
+    unit_of_measurement: Wh
+    state_class: total_increasing
+    accuracy_decimals: 0
+
+  - platform: total_daily_energy
+    name: "Total Daily PV Energy"
+    power_id: ${device_id}_pv_power
+    id: ${device_id}_total_daily_pv_energy
+    method: trapezoid
+    device_class: energy
+    unit_of_measurement: Wh
+    state_class: total_increasing
+    accuracy_decimals: 0
+
+  - platform: uptime
+    name: "Uptime"
+    id: ${device_id}_uptime_sensor
+    update_interval: 300s
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: ${device_id}_uptime_human
+            state: !lambda |-
+              int seconds = round(id(${device_id}_uptime_sensor).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds = seconds % (24 * 3600);
+              int hours = seconds / 3600;
+              seconds = seconds % 3600;
+              int minutes = seconds /  60;
+              seconds = seconds % 60;
+              return (
+                (days ? to_string(days) + "d " : "") +
+                (hours ? to_string(hours) + "h " : "") +
+                (minutes ? to_string(minutes) + "m " : "") +
+                (to_string(seconds) + "s")
+              ).c_str();
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    # QPIRI
+    #grid_rating_voltage:
+    #  id: "${device_id}_grid_rating_voltage"
+    #  name: "${name} Grid rating Voltage"
+    #grid_rating_current:
+    #  id: "${device_id}_grid_rating_current"
+    #  name: "Grid Rating Current"
+    #ac_output_rating_voltage:
+    #  id: "${device_id}_ac_output_rating_voltage"
+    #  name: "AC Output Rating Voltage"
+    #    ac_output_rating_frequency:
+    #      name: "${name} AC output rating frequency"
+    #ac_output_rating_current:
+    #  id: "${device_id}_ac_output_rating_current"
+    #  name: "AC Output Rating Current"
+    #ac_output_rating_apparent_power:
+    #  name: "${name} ac_output_rating_apparent_power"
+    #ac_output_rating_active_power:
+    #  id: "${device_id}_ac_output_rating_active_power"
+    #  name: "${name} AC Output Rating Active Power"
+    #battery_rating_voltage:
+    #  id: "${device_id}_battery_rating_voltage"
+    #  name: Battery Rating Voltage
+    #battery_recharge_voltage:
+    #  id: "${device_id}_battery_recharge_voltage"
+    #  name: Battery Re-Charge Voltage
+    #battery_under_voltage:
+    #  id: "${device_id}_battery_under_voltage"
+    #  name: Battery Under Voltage
+    #battery_bulk_voltage:
+    #  id: "${device_id}_battery_bulk_voltage"
+    #  name: "Battery Bulk Voltage"
+    #battery_float_voltage:
+    #  id: ${device_id}_battery_float_voltage
+    #  name: Battery Float Voltage
+    #battery_type:
+    #  name: "Battery Type"
+    #  id: ${device_id}_battery_type
+    #    current_max_ac_charging_current:
+    #      name: "${name} current_max_ac_charging_current"
+    #    current_max_charging_current:
+    #      name: "${name} current_max_charging_current"
+    #    input_voltage_range:
+    #      id: ${device_id}_input_voltage_range
+    #      name: "Input Voltage Range"
+    #      output_source_priority:
+    #        name: "${name} output_source_priority"
+    #      charger_source_priority:
+    #        name: "${name} charger_source_priority"
+    #    parallel_max_num:
+    #      name: "${name} parallel_max_num"
+    #    machine_type:
+    #      name: "${name} machine_type"
+    #    topology:
+    #      name: "${name} topology"
+    output_mode:
+      id: ${device_id}_output_mode
+      name: "Output Mode"
+    #    battery_redischarge_voltage:
+    #      name: "${name} battery_redischarge_voltage"
+    #    pv_ok_condition_for_parallel:
+    #      name: "${name} pv_ok_condition_for_parallel"
+    #    pv_power_balance:
+    #      name: "${name} pv_power_balance"
+    max_charging_time_at_cv_stage:
+      id: ${device_id}_max_charging_time_at_cv_stage
+      name: "Max. charging time at C.V stage"
+    
+
+    # QPIGS
+    grid_voltage:
+      id: ${device_id}_grid_voltage
+      name: "Grid Voltage"
+    grid_frequency:
+      id: ${device_id}_grid_frequency
+      name: "Grid Frequency"
+    ac_output_voltage:
+      id: ${device_id}_ac_output_voltage
+      name: "AC Output Voltage"
+    ac_output_frequency:
+      id: ${device_id}_ac_output_frequency
+      name: "AC Output Frequency"
+    ac_output_apparent_power:
+      id: ${device_id}_ac_output_apparent_power
+      name: "AC Output Apparent Power"
+    ac_output_active_power:
+      id: ${device_id}_ac_output_active_power
+      name: "AC Output Active Power"
+    output_load_percent:
+      id: ${device_id}_output_load_percent
+      name: "Output Load Percent"
+    bus_voltage:
+      id: ${device_id}_bus_voltage
+      name: "Bus Voltage"
+    battery_voltage:
+      id: ${device_id}_battery_voltage
+      name: "Battery Voltage"
+    battery_charging_current:
+      id: ${device_id}_battery_charging_current
+      name: "Battery Charging Current"
+    battery_capacity_percent:
+      id: ${device_id}_battery_soc
+      name: "Battery SoC"
+    inverter_heat_sink_temperature:
+      id: ${device_id}_inverter_heat_sink_temperature
+      name: "Inverter Heat Sink Temperature"
+    pv1_input_current:
+      id: ${device_id}_pv1_input_current
+      name: "PV 1 Input Current"
+    pv1_input_voltage:
+      id: ${device_id}_pv1_input_voltage
+      name: "PV 1 Input Voltage"
+    pv2_input_current:
+      id: ${device_id}_pv2_input_current
+      name: "PV 2 Input Current"
+    pv2_input_voltage:
+      id: ${device_id}_pv2_input_voltage
+      name: "PV 2 Input Voltage"
+    battery_voltage_scc:
+      id: ${device_id}_battery_voltage_scc
+      name: "Battery Voltage from SCC"
+    battery_discharge_current:
+      id: ${device_id}_battery_discharge_current
+      name: "Battery Discharge Current"
+    battery_voltage_offset_for_fans_on:
+      id: ${device_id}_battery_voltage_offset_for_fans_on
+      name: "Battery voltage offset for fans on"
+#    eeprom_version:
+#      name: "${name} eeprom_version"
+    pv1_charging_power:
+      id: ${device_id}_pv1_charging_power
+      name: "PV 1 Charging Power"
+      icon: 'mdi:solar-power'
+      on_value:
+        then:
+          - globals.set:
+              id: ${device_id}_global_pv1_power
+              value: !lambda 'return x;'
+    pv2_charging_power:
+      id: ${device_id}_pv2_charging_power
+      name: "PV 2 Charging Power"
+      icon: 'mdi:solar-power'
+      on_value:
+        then:
+          - globals.set:
+              id: ${device_id}_global_pv2_power
+              value: !lambda 'return x;'
+    # QET
+    total_pv_generated_energy:
+      id: ${device_id}_total_pv_generated_energy
+      name: Total PV Generated Energy
+    # QLT
+    total_output_load_energy:
+      id: ${device_id}_total_output_load_energy
+      name: Total Output Load Energy
+    max_discharging_current:
+      id: ${device_id}_max_discharging_current
+      name: MAX Discharging Current
+    # QGPS0
+    #serial_number_0:
+    #  id: ${device_id}_serial_number_0
+    #  name: Serial Number 0
+    fault_code_0:
+      id: ${device_id}_fault_code_0
+      name: Fault_Code 0
+    #grid_voltage_0:
+    #  id: ${device_id}_grid_voltage_0
+    #  name: AC Grid Voltage 0
+    #grid_frequency_0:
+    #  id: ${device_id}_grid_frequency_0
+    #  name: AC Grid Frequency 0
+    #ac_output_voltage_0:
+    #  id: ${device_id}_ac_output_voltage_0
+    #  name: AC Output Voltage 0
+    #ac_output_frequency_0:
+    #  id: ${device_id}_ac_output_frequency_0
+    #  name: AC Output Frequency 0
+    #ac_output_apparent_power_0:
+    #  id: ${device_id}_ac_output_apparent_power_0
+    #  name: AC Output Apparent Power 0
+    #ac_output_active_power_0:
+    #  id: ${device_id}_ac_output_active_power_0
+    #  name: AC Output Active Power 0
+    #load_percent_0:
+    #  id: ${device_id}_load_percent_0
+    #  name: Load Percent 0
+    #battery_voltage_0:
+    #  id: ${device_id}_battery_voltage_0
+    #  name: Battery Voltage 0
+    #battery_charging_current_0:
+    #  id: ${device_id}_battery_charging_current_0
+    #  name: Battery Charging Current 0
+    #battery_capacity_0:
+    #  id: ${device_id}_battery_capacity_0
+    #  name: Battery Capacity 0
+    #pv1_input_voltage_0:
+    #  id: ${device_id}_pv1_input_voltage_0
+    #  name: PV1 Input Voltage 0
+    #total_charging_current_0:
+    #  id: ${device_id}_total_charging_current_0
+    #  name: Total Charging Current 0
+    #total_ac_output_apparent_power_0:
+    #  id: ${device_id}_total_ac_output_apparent_power_0
+    #  name: Total AC Output Apparent Power 0
+    #total_output_active_power_0:
+    #  id: ${device_id}_total_output_active_power_0
+    #  name: Total Output Active Power 0
+    #total_ac_output_percentage_0:
+    #  id: ${device_id}_total_ac_output_percentage_0
+    #  name: Total AC Output Percentage 0
+    #inverter_status_battery_0:
+    #  id: ${device_id}_inverter_status_battery_0
+    #  name: Inverter Status Battery 0
+    #output_mode_0:
+    #  id: ${device_id}_output_mode_0
+    #  name: Output Mode 0
+    #charger_source_priority_0:
+    #  id: ${device_id}_charger_source_priority_0
+    #  name: Charger Source Priority 0
+    #max_charger_current_0:
+    #  id: ${device_id}_max_charger_current_0
+    #  name: MAX Charger Current 0
+    #max_charger_range_0:
+    #  id: ${device_id}_max_charger_range_0
+    #  name: MAX Charger Range 0
+    #max_ac_charger_current_0:
+    #  id: ${device_id}_max_ac_charger_current_0
+    #  name: MAX AC Charger Current 0
+    #pv1_input_current_0:
+    #  id: ${device_id}_pv1_input_current_0
+    #  name: PV1 Input Current 0
+    #battery_discharge_current_0:
+    #  id: ${device_id}_battery_discharge_current_0
+    #  name: Battery Discharge Current 0
+    #pv2_input_voltage_0:
+    #  id: ${device_id}_pv2_input_voltage_0
+    #  name: PV2 Input Voltage 0
+    #pv2_input_current_0:
+    #  id: ${device_id}_pv2_input_current_0
+    #  name: PV2 Input Current 0
+
+    # Q1
+    charge_average_current:
+      id: ${device_id}_charge_average_current
+      name: Charge Average Current
+      unit_of_measurement: A
+    scc_pwm_temperature:
+      id: ${device_id}_scc_pwm_temperature
+      name: SCC PWM Temperature
+    inverter_temperature:
+      id: ${device_id}_inverter_temperature
+      name: Inverter Temperature
+    battery_temperature:
+      id: ${device_id}_battery_temperature
+      name: Battery Temperature
+    transformer_temperature:
+      id: ${device_id}_transformer_temperature
+      name: Transformer Temperature
+    fan_pwm_speed:
+      id: ${device_id}_fan_pwm_speed
+      name: Fan PWM Speed
+      state_class: measurement
+      unit_of_measurement: '%'
+    time_until_absorb_charging:
+      id: ${device_id}_time_until_absorb_charging
+      name: Time Until Absorb Charging
+    time_until_float_charging:
+      id: ${device_id}_time_until_float_charging
+      name: Time Until Float Charging
+    scc_charge_power:
+      id: ${device_id}_scc_charge_power
+      name: SCC charge power
+      icon: 'mdi:solar-power'
+      device_class: power
+      unit_of_measurement: W
+    
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: 39
+      #number: 41
+      inverted: true
+    name: Button
+    on_click:
+      - min_length: 200ms
+        max_length: 900ms
+        then:
+          - light.toggle: status_led
+      - min_length: 1000ms
+        max_length: 5000ms
+        then:
+          - button.press: ${device_id}_restart_button
+    #on_press:
+    #  then:
+    #    - light.toggle: status_led
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    add_sbu_priority_version:
+      id: ${device_id}_add_sbu_priority_version
+      name: "Add SBU Priority Version"
+    configuration_status:
+      id: ${device_id}_configuration_status
+      name: "Configuration Status Changed"
+#    scc_firmware_version:
+#      name: "${name} scc_firmware_version"
+    load_status:
+      id: ${device_id}_load_status
+      name: "Load Status"
+    battery_voltage_to_steady_while_charging:
+      id: ${device_id}_battery_voltage_to_steady_while_charging
+      name: "Battery Voltage to Steady While Charging"
+    charging_status:
+      id: ${device_id}_charging_status
+      name: "Charging Status"
+    scc_charging_status:
+      id: ${device_id}_scc_charging_status
+      name: "SCC Charging Status"
+    ac_charging_status:
+      id: ${device_id}_ac_charging_status
+      name: "AC Charging Status"
+    charging_to_floating_mode:
+      id: ${device_id}_charging_to_floating_mode
+      name: "Charging to Floating Mode"
+    switch_on:
+      id: ${device_id}_switch_on
+      name: "Switch On"
+    #dustproof_installed:
+    #  id: ${device_id}_dustproof_installed
+    #  name: "Dustproof Installed"
+    #silence_buzzer_open_buzzer:
+    #  id: ${device_id}_silence_buzzer_open_buzzer
+    #  name: "Silence Buzzer / Open Buzzer"
+    overload_bypass_function:
+      id: ${device_id}_overload_bypass_function
+      name: "Overload Bypass Function"
+    lcd_escape_to_default:
+      id: ${device_id}_lcd_escape_to_default
+      name: "LCD Escape to Default"
+    overload_restart_function:
+      id: ${device_id}_overload_restart_function
+      name: "Overload Restart Function"
+    over_temperature_restart_function:
+      id: ${device_id}_over_temperature_restart_function
+      name: "Over Temperature Restart Function"
+#    backlight_on:
+#      id: ${device_id}_backlight_on
+#      name: "Backlight On"
+    warnings_present:
+      id: ${device_id}_warnings_present
+      name: "Warnings Present"
+    faults_present:
+      id: ${device_id}_faults_present
+      name: "Faults Present"
+    #parallel_num_0:
+    #  id: ${device_id}_parallel_num_0
+    #  name: Parallel Num Valid
+    inverter_status_scc_0:
+      id: ${device_id}_inverter_status_scc_0
+      name: Inverter Status SCC 0
+    inverter_status_ac_charging_0:
+      id: ${device_id}_inverter_status_ac_charging_0
+      name: Inverter Status AC Charging 0
+    inverter_status_scc_charging_0:
+      id: ${device_id}_inverter_status_scc_charging_0
+      name: Inverter Status SCC Charging 0
+    inverter_status_line_0:
+      id: ${device_id}_inverter_status_line_0
+      name: Inverter Status Line 0
+    inverter_status_load_0:
+      id: ${device_id}_inverter_status_load_0
+      name: Inverter Status Load 0
+    inverter_status_configuration_0:
+      id: ${device_id}_inverter_status_configuration_0
+      name: Inverter Status Configuration 0
+    fan_lock_status:
+      id: ${device_id}_fan_lock_status
+      name: Fan Lock status
+
+  - platform: template
+    name: ${device_name} Grid Input On
+    id: ${device_id}_grid_input_on
+    lambda: |-
+      if (id(${device_id}_grid_voltage).state > 0) {
+        // Grid is connected
+        return true;
+      } else {
+        // Grid is disconnected.
+        return false;
+      }
+
+text_sensor:
+  - platform: version
+    name: "ESPHome Version"
+
+  - platform: wifi_info
+    ip_address:
+      name: ${device_name} IP
+      update_interval: 120s
+    ssid:
+      name: ${device_name} SSID
+      update_interval: 120s
+    bssid:
+      name: ${device_name} BSSID
+      update_interval: 120s
+    mac_address:
+      name: ${device_name} MAC
+    scan_results:
+      name: ${device_name} Latest Scan Results
+      update_interval: 120s
+
+  - platform: template
+    name: Uptime Human Readable
+    id: ${device_id}_uptime_human
+    icon: mdi:clock-start
+    update_interval: 120s
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    device_mode:
+      id: ${device_id}_device_mode
+      name: "Device Mode"
+      filters:
+      - map:
+        - P -> Power On
+        - S -> Standby
+        - L -> Line
+        - B -> Battery
+        - F -> Fault
+        - H -> Power saving
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    operation_logic:
+      id: ${device_id}_operation_logic
+      name: Operation Logic
+      filters:
+      - map:
+        - 0 -> Auto
+        - 1 -> On-Line
+        - 2 -> Eco
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    work_mode_0:
+      id: ${device_id}_work_mode_0
+      name: Work Mode 0
+      filters:
+      - map:
+        - P -> Power On
+        - S -> Standby
+        - L -> Line
+        - B -> Battery
+        - F -> Fault
+        - H -> Power saving
+
+    inverter_charge_status:
+      id: ${device_id}_inverter_charge_status
+      name: Inverter Charge Status
+      filters:
+        - map:
+          - 10 -> No Charging
+          - 11 -> Bulk Stage
+          - 12 -> Absorb
+          - 13 -> Float
+
+    #last_qpigs:
+    #  name: "${device_name} last_qpigs"
+    #last_qpiri:
+    #  name: "${device_name} last_qpiri"
+    #last_qmod:
+    #  name: "${device_name} last_qmod"
+    #last_qflag:
+    #  name: "${device_name} last_qflag"
+    #last_qpigs2:
+    #  name: "${device_name} last_qpigs2"
+    #last_qpgs0:
+    #  name: "${device_name} last_qpgs0"
+    #last_qpiws:
+    #  name: "${device_name} last_qpiws"
+    #last_qt:
+    #  name: "${device_name} last_qt"
+    #last_qmn :
+    #  name: "${device_name} last_qmn"
+    #last_qet:
+    #  name: "${device_name} last_qet"
+    #last_qlt:
+    #  name: "${device_name} last_qlt"
+    #last_qmchgcr:
+    #  name: "${device_name} last_qmchgcr"
+    #last_qmuchgcr:
+    #  name: "${device_name} last_qmuchgcr"
+    #last_q1:
+    #  name: "${device_name} last_q1"
+    last_qbatcd:
+      name: "${device_name} last_qbatcd"
+    last_qbms:
+      name: "${device_name} last_qbms"
+
+switch:
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    #output_source_priority_utility:
+    #  id: ${device_id}_output_source_priority_utility
+    #  name: "Output Source Priority Utility"
+    #output_source_priority_solar:
+    #  id: ${device_id}_output_source_priority_solar
+    #  name: "Output Source Priority Solar"
+    #output_source_priority_battery:
+    #  id: ${device_id}_output_source_priority_battery
+    #  name: "Output Source Priority Battery"
+    #pv_ok_condition_for_parallel:
+    #  id: ${device_id}_pv_ok_condition_for_parallel
+    #  name: "PV OK Condition for Parallel"
+    pv_power_balance:
+      id: ${device_id}_pv_power_balance
+      name: "PV Power Balance"
+    input_voltage_range:
+      id: ${device_id}_input_voltage_range
+      name: "Input Voltage Range (OFF: Appliance, ON: UPS)"
+
+#output:
+#  - platform: pipsolar
+#    pipsolar_id: ${device_id}
+#    battery_recharge_voltage:
+#      id: ${device_id}_battery_recharge_voltage_out
+#  - platform: pipsolar
+#    pipsolar_id: ${device_id}
+#    battery_bulk_voltage:
+#      id: ${device_id}_battery_bulk_voltage_out
+#  - platform: pipsolar
+#    pipsolar_id: ${device_id}
+#    battery_under_voltage:
+#      id: ${device_id}_battery_under_voltage_out
+#  - platform: pipsolar
+#    pipsolar_id: ${device_id}
+#    battery_float_voltage:
+#      id: ${device_id}_battery_float_voltage_out
+#  - platform: pipsolar
+#    pipsolar_id: ${device_id}
+#    battery_redischarge_voltage:
+#      id: ${device_id}_battery_redischarge_voltage_out
+
+select:
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    output_source_priority:
+      id: ${device_id}_output_source_priority_select
+      name: "Output Source Priority"
+      optionsmap:
+        "Utility first (USB)"        : "POP00"
+        "Solar Utility Battery (SUB)": "POP01"
+        "Solar Battery Utility (SBU)": "POP02"
+      statusmap:
+        "0": "Utility first (USB)"
+        "1": "Solar Utility Battery (SUB)"
+        "2": "Solar Battery Utility (SBU)"
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    charging_discharging_control:
+      id: ${device_id}_charging_discharging_control
+      # See MAX_Communication_Protocol_20200526.pdf page 18
+      name: "Set Charging/Discharging Control"
+      optionsmap:
+        "111 (Discharge completely on/Discharge on, but standby allowed/Charge completely on)"  : "PBATCD111"
+        "011 (Discharge completely off/Discharge on, but standby allowed/Charge completely on)" : "PBATCD011"
+        "101 (Discharge completely on/Discharge off, but standby allowed/Charge completely on)" : "PBATCD101"
+        "110 (Discharge completely on/Discharge on, but standby allowed/Charge completely off)" : "PBATCD110"
+        "010 (Discharge completely off/Discharge on, but standby allowed/Charge completely off)": "PBATCD010"
+        "100 (N/A)"                                                                             : "PBATCD100"
+        "001 (Discharge completely off/Discharge off, but standby allowed/Charge completely on)": "PBATCD001"
+        "000 (Clean flags)"                                                                     : "PBATCD000"
+      statusmap:
+        # Enabled charger, Enabled discharger 
+        "111": "111 (Discharge completely on/Discharge on, but standby allowed/Charge completely on)"
+        # Enabled charger, depends on Prog16 setting if AC source valid, charge 2A from AC, even if prog. 16 is “only solar”. If prog. 16 is any other setting, ignore and let charging from AC source continue normally.
+        # Disabled discharger and shut down unit completely when insufficient PV or Grid is present
+        "011": "011 (Discharge completely off/Discharge on, but standby allowed/Charge completely on)"
+        # Enabled charger, depends on Prog16 setting if AC source valid, charge 2A from AC, even if prog. 16 is “only solar”. If prog. 16 is any other setting, ignore and let charging from AC source continue normally.
+        # Disabled discharger but keep unit stay at standby mode.
+        "101": "101 (Discharge completely on/Discharge off, but standby allowed/Charge completely on)"
+        # Disabled charger
+        # Enabled discharger
+        "110": "110 (Discharge completely on/Discharge on, but standby allowed/Charge completely off)"
+        # Disabled charger
+        # Disabled discharger and shut down unit completely when no PV or Grid is present.
+        "010": "010 (Discharge completely off/Discharge on, but standby allowed/Charge completely off)"
+        # Disabled charger
+        # Disabled discharger but keep unit stay at standby mode.
+        "100": "100 (N/A)"
+        # N/A
+        # N/A
+        "001": "001 (Discharge completely off/Discharge off, but standby allowed/Charge completely on)"
+        # Cleaned the enable/disable charger flags and return to previous charger status.
+        # Cleaned the enable/disable discharger flags and return to previous discharger status.
+        "000": "000 (Clean flags)"
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    charger_source_priority:
+      id: ${device_id}_charger_source_priority
+      name: Set Device charger priority
+      optionsmap:
+#        "Utility first"           : "PCP00"
+        "Solar first (CSO)"        : "PCP01"
+        "Solar and utility (SNU)"  : "PCP02"
+        "Solar charging only (OSO)": "PCP03"
+      statusmap:
+ #       "0": "Utility first"
+        "1": "Solar first (CSO)"
+        "2": "Solar and utility (SNU)"
+        "3": "Solar charging only (OSO)"
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    current_max_ac_charging_current:
+      id: ${device_id}_current_max_ac_charging_current
+      name: "Set Current Max AC Charging Current"
+      # 002 010 020 030 040 050 060 070 080 090 100 110 120
+      optionsmap:
+        "2A"  : "MUCHGC0002"
+        "10A" : "MUCHGC0010"
+        "20A" : "MUCHGC0020"
+        "30A" : "MUCHGC0030"
+        "40A" : "MUCHGC0040"
+        "50A" : "MUCHGC0050"
+        "60A" : "MUCHGC0060"
+        "70A" : "MUCHGC0070"
+        "80A" : "MUCHGC0080"
+        "90A" : "MUCHGC0090"
+        "100A": "MUCHGC0100"
+        "110A": "MUCHGC0110"
+        "120A": "MUCHGC0120"
+      statusmap:
+        "2"  :   "2A"
+        "10" :  "10A"
+        "20" :  "20A"
+        "30" :  "30A"
+        "40" :  "40A"
+        "50" :  "50A"
+        "60" :  "60A"
+        "70" :  "70A"
+        "80" :  "80A"
+        "90" :  "90A"
+        "100": "100A"
+        "110": "110A"
+        "120": "120A"
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    current_max_charging_current:
+      id: ${device_id}_current_max_charging_current
+      name: "Set Current Max Charging Current"
+      # MCHGC010 010 020 030 040 050 060 070 080 090 100 110 120
+      optionsmap:
+        "10A" : "MNCHGC0010"
+        "20A" : "MNCHGC0020"
+        "30A" : "MNCHGC0030"
+        "40A" : "MNCHGC0040"
+        "50A" : "MNCHGC0050"
+        "60A" : "MNCHGC0060"
+        "70A" : "MNCHGC0070"
+        "80A" : "MNCHGC0080"
+        "90A" : "MNCHGC0090"
+        "100A": "MNCHGC0100"
+        "110A": "MNCHGC0110"
+        "120A": "MNCHGC0120"
+      statusmap:
+        "10" : "10A"
+        "20" : "20A"
+        "30" : "30A"
+        "40" : "40A"
+        "50" : "50A"
+        "60" : "60A"
+        "70" : "70A"
+        "80" : "80A"
+        "90" : "90A"
+        "100": "100A"
+        "110": "110A"
+        "120": "120A"
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    max_discharging_current:
+      id: ${device_id}_max_discharging_current_select
+      name: "Set Max Discharging Current"
+      # 000 030 040 050 060 070 080 090 100 110 120 130 140 150
+      optionsmap:
+        "Auto": "PBATMAXDISC000"
+        "30A" : "PBATMAXDISC030"
+        "40A" : "PBATMAXDISC040"
+        "50A" : "PBATMAXDISC050"
+        "60A" : "PBATMAXDISC060"
+        "70A" : "PBATMAXDISC070"
+        "80A" : "PBATMAXDISC080"
+        "90A" : "PBATMAXDISC090"
+        "100A": "PBATMAXDISC100"
+        "110A": "PBATMAXDISC110"
+        "120A": "PBATMAXDISC120"
+        "130A": "PBATMAXDISC130"
+        "140A": "PBATMAXDISC140"
+        "150A": "PBATMAXDISC150"
+      statusmap:
+        "0"  : "Auto"
+        "30" : "30A"
+        "40" : "40A"
+        "50" : "50A"
+        "60" : "60A"
+        "70" : "70A"
+        "80" : "80A"
+        "90" : "90A"
+        "100": "100A"
+        "110": "110A"
+        "120": "120A"
+        "130": "130A"
+        "140": "140A"
+        "150": "150A"
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    battery_type:
+      id: ${device_id}_battery_type_select
+      name: "Set Battery Type"
+      # Setting battery type, 00 for AGM, 01 for Flooded battery, 02 for user define, 03 for Pylontech, 04
+      # for Shinheung, 05 for Weco, 06 for Soltaro, 07 for BAK, 08 for Lib, 09 for Lic
+      optionsmap:
+        "AGM":        "PBT00"
+        "Flooded":    "PBT01"
+        "User":       "PBT02"
+        "Pylontech":  "PBT03"
+        "Shinheung":  "PBT04"
+        "Weco":       "PBT05"
+        "Soltaro":    "PBT06"
+        "BAK":        "PBT07"
+        "LIB":        "PBT08"
+        "LIC":        "PBT09"
+      statusmap:
+        "0": "AGM"
+        "1": "Flooded"
+        "2": "User"
+        "3": "Pylontech"
+        "4": "Shinheung"
+        "5": "Weco"
+        "6": "Soltaro"
+        "7": "BAK"
+        "8": "LIB"
+        "9": "LIC"
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    battery_recharge_voltage:
+      id: ${device_id}_battery_recharge_voltage_select
+      name: "Set Battery Re-Charge Voltage"
+      # Switch back to 'grid' when battery below 
+      # 44.0, 45.0, 46.0, 47.0, 48.0, 49.0, 50.0, 51.0
+      optionsmap:
+        "44V": "PBCV44.0"
+        "45V": "PBCV45.0"
+        "46V": "PBCV46.0"
+        "47V": "PBCV47.0"
+        "48V": "PBCV48.0"
+        "49V": "PBCV49.0"
+        "50V": "PBCV50.0"
+        "51V": "PBCV51.0"
+      statusmap:
+         "44.0": "44V"
+         "45.0": "45V"
+         "46.0": "46V"
+         "47.0": "47V"
+         "48.0": "48V"
+         "49.0": "49V"
+         "50.0": "50V"
+         "51.0": "51V"
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    battery_redischarge_voltage:
+      id: ${device_id}_battery_redischarge_voltage_select
+      name: "Set Battery Re-Discharge Voltage"
+      # Don't discharge the battery unless it is at 
+      # 0, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58
+      # 00.0V means battery is full (charging in float mode)
+      optionsmap:
+        "Full": "PBDV00.0"
+        "48V" : "PBDV48.0"
+        "49V" : "PBDV49.0"
+        "50V" : "PBDV50.0"
+        "51V" : "PBDV51.0"
+        "52V" : "PBDV52.0"
+        "53V" : "PBDV53.0"
+        "54V" : "PBDV54.0"
+        "55V" : "PBDV55.0"
+        "56V" : "PBDV56.0"
+        "57V" : "PBDV57.0"
+        "58V" : "PBDV58.0"
+      statusmap:
+        "0"   : "Full"
+        "48.0": "48V" 
+        "49.0": "49V" 
+        "50.0": "50V" 
+        "51.0": "51V" 
+        "52.0": "52V" 
+        "53.0": "53V" 
+        "54.0": "54V" 
+        "55.0": "55V" 
+        "56.0": "56V" 
+        "57.0": "57V" 
+        "58.0": "58V" 
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    battery_cutoff_voltage:
+      id: ${device_id}_battery_cutoff_voltage_select
+      name: "Set Battery Cut-Off Voltage"
+      # 29. Battery cut-off voltage (Battery under voltage)
+      # 42.0, 42.4, 43.2, 44, 44.8, 45.6, 46.4, 47.2, 48.0
+      # 2.625, 2.65, 2.7, 2.75, 2.8, 2.85, 2.9, 2.95, 3
+      optionsmap:
+        "42.0V" : "PSDV42.0"
+        "42.4V" : "PSDV42.4"
+        "43.2V" : "PSDV43.2"
+        "44.0V" : "PSDV44.0"
+        "44.8V" : "PSDV44.8"
+        "45.6V" : "PSDV45.6"
+        "46.4V" : "PSDV46.4"
+        "47.2V" : "PSDV47.2"
+        "48.0V" : "PSDV48.0"
+      statusmap:
+        "42.0": "42.0V"
+        "42.4": "42.4V"
+        "43.2": "43.2V"
+        "44.0": "44.0V"
+        "44.8": "44.8V"
+        "45.6": "45.6V"
+        "46.4": "46.4V"
+        "47.2": "47.2V"
+        "48.0": "48.0V"
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    battery_bulk_voltage:
+      id: ${device_id}_battery_bulk_voltage_select
+      name: "Set Battery Bulk Voltage"
+      # 26. Bulk charging voltage (C.V voltage)
+      # 48.0, 48.8, 49.6, 50.4, 51.2, 52.0, 52.8, 53.6, 54.4, 55.2, 56.0, 56.8, 57.6, 58.4
+      #  3.0,  3.05, 3.1,  3.15, 3.2,  3.25, 3.3,  3.35, 3.4,  3.45, 3.5,  3.55, 3.6,  3.65
+      optionsmap:
+        "48.0V" : "PCVV48.0"
+        "48.8V" : "PCVV48.8"
+        "49.6V" : "PCVV49.6"
+        "50.4V" : "PCVV50.4"
+        "51.2V" : "PCVV51.2"
+        "52.0V" : "PCVV52.0"
+        "52.8V" : "PCVV52.8"
+        "53.6V" : "PCVV53.6"
+        "54.4V" : "PCVV54.4"
+        "55.2V" : "PCVV55.2"
+        "56.0V" : "PCVV56.0"
+        "56.8V" : "PCVV56.8"
+        "57.6V" : "PCVV57.6"
+        "58.4V" : "PCVV58.4"
+      statusmap:
+        "48.0": "48.0V"
+        "48.8": "48.8V"
+        "49.6": "49.6V"
+        "50.4": "50.4V"
+        "51.2": "51.2V"
+        "52.0": "52.0V"
+        "52.8": "52.8V"
+        "53.6": "53.6V"
+        "54.4": "54.4V"
+        "55.2": "55.2V"
+        "56.0": "56.0V"
+        "56.8": "56.8V"
+        "57.6": "57.6V"
+        "58.4": "58.4V"
+
+  - platform: pipsolar
+    pipsolar_id: ${device_id}
+    battery_float_voltage:
+      id: ${device_id}_battery_float_voltage_select
+      name: "Set Battery Float Voltage"
+      # 26. Bulk charging voltage (C.V voltage)
+      # 48.0, 48.8, 49.6, 50.4, 51.2, 52.0, 52.8, 53.6, 54.4, 55.2, 56.0, 56.8, 57.6, 58.4
+      #  3.0,  3.05, 3.1,  3.15, 3.2,  3.25, 3.3,  3.35, 3.4,  3.45, 3.5,  3.55, 3.6,  3.65
+      optionsmap:
+        "48.0V" : "PBFT48.0"
+        "48.8V" : "PBFT48.8"
+        "49.6V" : "PBFT49.6"
+        "50.4V" : "PBFT50.4"
+        "51.2V" : "PBFT51.2"
+        "52.0V" : "PBFT52.0"
+        "52.8V" : "PBFT52.8"
+        "53.6V" : "PBFT53.6"
+        "54.4V" : "PBFT54.4"
+        "55.2V" : "PBFT55.2"
+        "56.0V" : "PBFT56.0"
+        "56.8V" : "PBFT56.8"
+        "57.6V" : "PBFT57.6"
+        "58.4V" : "PBFT58.4"
+      statusmap:
+        "48.0": "48.0V"
+        "48.8": "48.8V"
+        "49.6": "49.6V"
+        "50.4": "50.4V"
+        "51.2": "51.2V"
+        "52.0": "52.0V"
+        "52.8": "52.8V"
+        "53.6": "53.6V"
+        "54.4": "54.4V"
+        "55.2": "55.2V"
+        "56.0": "56.0V"
+        "56.8": "56.8V"
+        "57.6": "57.6V"
+        "58.4": "58.4V"
+
+#  - platform: pipsolar
+#    pipsolar_id: ${device_id}
+#    bms_values:
+#      id: ${device_id}_bms_values
+#      name: "BMS values"
+#      optionsmap:
+#        "test0": "PBMS0 000 0 0 0 000 000 000 0000 0000"
+#        "test1": "PBMS1 000 0 0 0 000 000 000 0000 0000"
+#        "test2": "PBMS0 100 0 1 1 560 560 480 500 500"
+#        "test3": "PBMS1 100 0 1 1 560 560 480 500 500"
+#      statusmap:
+#        "(0 000 0 0 0 000 000 000 0000 0000": "test0"
+#        "(1 000 0 0 0 000 000 000 0000 0000": "test1"
+#        "(0 100 0 1 1 560 560 480 500 500" : "test2"
+#        "(1 100 0 1 1 560 560 480 500 500" : "test3"
+#      on_value:
+#        then:
+#          - logger.log:
+#              format: "bms_values: Chosen option: %s (index %d)"
+#              args: ["x.c_str()", "i"]
+#          - uart.write: [0x50, 0x42, 0x4d, 0x53, 0x31, 0x20, 0x31, 0x30, 0x20, 0x30, 0x20, 0x30, 0x20, 0x31, 0x20, 0x31, 0x20, 0x35, 0x36, 0x30, 0x20, 0x35, 0x36, 0x30, 0x20, 0x34, 0x38, 0x30, 0x20, 0x35, 0x30, 0x30, 0x20, 0x35, 0x30, 0x30, 0x8b, 0xed, 0x0d]
+#          #- uart.write: 'PBMS1 10 0 0 1 1 560 560 480 500 500\x8d\xeb\r'
