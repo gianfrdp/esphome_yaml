@@ -6,6 +6,7 @@ substitutions:
 
 esphome:
   name: ${device_name}
+  comment: "Voltronic Axpert Max 7200 RS485 PIP30 protocol"
   #platform: ESP32
   #board: m5stack-atom
   platformio_options:
@@ -106,7 +107,7 @@ wifi:
 
   ap:
     ssid: "${device_name}"
-    password: "sAAGiW4YfU9F"
+    password: !secret ap_password
 
 web_server:
   port: 80

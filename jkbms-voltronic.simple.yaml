@@ -6,6 +6,7 @@ substitutions:
 
 esphome:
   name: ${device_name}
+  comment: "Send BMS values to inverter Voltronic using modbus protocol LIB"
   platformio_options:
     upload_speed: 115200
 
@@ -49,7 +50,7 @@ wifi:
 
   ap:
     ssid: "${device_name}"
-    password: "sAAGiW4YfU9F"
+    password: !secret ap_password
 
 web_server:
   port: 80
@@ -233,11 +234,11 @@ modbus_server:
         on_read: | # called whenever a register in the range is read
           int number = 0;
           ESP_LOGD("ON_READ", "Charge enable: %d, Discharge enable: %d, SoC: %.0f, Full charge request: 0", id(bms_charging), id(bms_discharging), id(bms_soc));
-          number ^= (-id(bms_charging)                 ^ number) & (1 << 7);
-          number ^= (-id(bms_discharging)              ^ number) & (1 << 6);
-          number ^= (-(id(bms_soc) <= 9 ? 1 : 0)       ^ number) & (1 << 5);
-          number ^= (-(9 < id(bms_soc) <= 14 ? 1 : 0)  ^ number) & (1 << 4);
-          number ^= (0                                 ^ number) & (1 << 3);
+          number ^= (-id(bms_charging)                                ^ number) & (1 << 7);
+          number ^= (-id(bms_discharging)                             ^ number) & (1 << 6);
+          number ^= (-(id(bms_soc) <= 9 ? 1 : 0)                      ^ number) & (1 << 5);
+          number ^= (-(9 < id(bms_soc) && id(bms_soc) <= 14 ? 1 : 0)  ^ number) & (1 << 4);
+          number ^= (0                                                ^ number) & (1 << 3);
 
           ESP_LOGI("ON_READ", "address=0x%x, value=%X", address, number);
           return number;

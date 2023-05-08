@@ -1,6 +1,6 @@
 substitutions:
   device_name: "jk-bms"
-  device_description: "Monitor and control a JK-BMS via bluetooth and send data to inverter"
+  device_description: "Monitor and control a JK-BMS via bluetooth"
   friendly_name: JK BMS to Voltronic
   name: ${device_name}
   device_id: jkbms_voltronic
@@ -33,8 +33,8 @@ esphome:
 
 esp32:
   board: m5stack-atom
-  #framework:
-  #  type: esp-idf
+  framework:
+    type: esp-idf
 
 external_components:
   - source: github://syssi/esphome-jk-bms@main
@@ -47,14 +47,17 @@ external_components:
   #    - captive_portal
   #  refresh: 0s
 
-web_server:
-  local: false
+#web_server:
+#  local: false
 
-captive_portal:
+#captive_portal:
 
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+    - ssid: !secret wifi_ssid_2
+      password: !secret wifi_password_2
 
   manual_ip:
     static_ip: 192.168.4.56
@@ -68,15 +71,15 @@ wifi:
 
   ap:
     ssid: "${name}"
-    password: "sAAGiW4YfU9F"
+    password: !secret ap_password
 
 time:
-  - platform: sntp
-    id: sntp_time
+  #- platform: sntp
+  #  id: sntp_time
     #servers: 192.168.2.1
     #timezone: Europe/Rome
-  #- platform: homeassistant
-  #  id: homeassistant_time
+  - platform: homeassistant
+    id: homeassistant_time
 
 ota:
 
@@ -154,82 +157,90 @@ binary_sensor:
   - platform: jk_bms_ble
     balancing:
       id: ${jk_bms_ble_id}_balancing
-      name: "Balancing"
+      name: "${name} Balancing"
     charging:
       id: ${jk_bms_ble_id}_charging
-      name: "Charging"
+      name: "${name} Charging"
     discharging:
       id: ${jk_bms_ble_id}_discharging
-      name: "Discharging"
+      name: "${name} Discharging"
     online_status:
       id: ${jk_bms_ble_id}_online_status
-      name: "Online status"
+      name: "${name} Online status"
 
 button:
   - platform: jk_bms_ble
     retrieve_settings:
       id: ${jk_bms_ble_id}_retrieve_settings_btn
-      name: "Retrieve settings"
+      name: "${name} Retrieve settings"
     retrieve_device_info:
       id: ${jk_bms_ble_id}_retrieve_device_info_btn
-      name: "Retrieve device info"
+      name: "${name} Retrieve device info"
 
   - platform: restart
     id: ${device_id}_restart_button
-    name: "Restart"
+    name: "${name} Restart"
 
 number:
   - platform: jk_bms_ble
     jk_bms_ble_id: ${jk_bms_ble_id}
     balance_trigger_voltage:
       id: ${jk_bms_ble_id}_balance_trigger_voltage
-      name: "Balance trigger voltage"
+      name: "${name} Balance trigger voltage"
     cell_count:
       id: ${jk_bms_ble_id}_cell_count
-      name: "Cell count"
+      name: "${name} Cell count"
     total_battery_capacity:
       id: ${jk_bms_ble_id}_total_battery_capacity
-      name: "Total battery capacity"
+      name: "${name} Total battery capacity"
     cell_voltage_overvoltage_protection:
       id: ${jk_bms_ble_id}_cell_voltage_overvoltage_protection
-      name: "Cell voltage overvoltage protection"
+      name: "${name} Cell voltage overvoltage protection"
     cell_voltage_overvoltage_recovery:
       id: ${jk_bms_ble_id}_cell_voltage_overvoltage_recovery
-      name: "Cell voltage overvoltage recovery"
+      name: "${name} Cell voltage overvoltage recovery"
     cell_voltage_undervoltage_protection:
       id: ${jk_bms_ble_id}_cell_voltage_undervoltage_protection
-      name: "Cell voltage undervoltage protection"
+      name: "${name} Cell voltage undervoltage protection"
     cell_voltage_undervoltage_recovery:
       id: ${jk_bms_ble_id}_cell_voltage_undervoltage_recovery
-      name: "Cell voltage undervoltage recovery"
+      name: "${name} Cell voltage undervoltage recovery"
     balance_starting_voltage:
       id: ${jk_bms_ble_id}_balance_starting_voltage
-      name: "Balance starting voltage"
+      name: "${name} Balance starting voltage"
     voltage_calibration:
       id: ${jk_bms_ble_id}_voltage_calibration
-      name: "Voltage calibration"
+      name: "${name} Voltage calibration"
     current_calibration:
       id: ${jk_bms_ble_id}_current_calibration
-      name: "Current calibration"
+      name: "${name} Current calibration"
+      unit_of_measurement: A
+      device_class: current
     power_off_voltage:
       id: ${jk_bms_ble_id}_power_off_voltage
-      name: "Power off voltage"
+      name: "${name} Power off voltage"
     max_balance_current:
       id: ${jk_bms_ble_id}_max_balance_current
-      name: "Max balance current"
+      name: "${name} Max balance current"
+      unit_of_measurement: A
+      device_class: current
     max_charge_current:
       id: ${jk_bms_ble_id}_max_charge_current
-      name: "Max charge current"
+      name: "${name} Max charge current"
+      unit_of_measurement: A
+      device_class: current
     max_discharge_current:
       id: ${jk_bms_ble_id}_max_discharge_current
-      name: "Max discharge current"
+      name: "${name} Max discharge current"
+      unit_of_measurement: A
+      device_class: current
 
 sensor:
   - platform: wifi_signal
-    name: "WiFi Signal"
+    name: "${name} WiFi Signal"
     update_interval: 300s
   - platform: uptime
-    name: "Uptime"
+    name: "${name} Uptime"
     id: ${device_id}_uptime_sensor
     update_interval: 300s
     on_raw_value:
@@ -255,165 +266,168 @@ sensor:
     jk_bms_ble_id: ${jk_bms_ble_id}
     min_cell_voltage:
       id: ${jk_bms_ble_id}_min_cell_voltage
-      name: "Min cell voltage"
+      name: "${name} Min cell voltage"
     max_cell_voltage:
       id: ${jk_bms_ble_id}_max_cell_voltage
-      name: "Max cell voltage"
+      name: "${name} Max cell voltage"
     min_voltage_cell:
       id: ${jk_bms_ble_id}_min_voltage_cell
-      name: "Min voltage cell"
+      name: "${name} Min voltage cell"
     max_voltage_cell:
       id: ${jk_bms_ble_id}_max_voltage_cell
-      name: "Max voltage cell"
+      name: "${name} Max voltage cell"
     delta_cell_voltage:
       id: ${jk_bms_ble_id}_delta_cell_voltage
-      name: "Delta cell voltage"
+      name: "${name} Delta cell voltage"
     average_cell_voltage:
       id: ${jk_bms_ble_id}_average_cell_voltage
-      name: "Average cell voltage"
+      name: "${name} Average cell voltage"
     cell_voltage_1:
       id: ${jk_bms_ble_id}_cell_voltage_1
-      name: "Cell voltage 1"
+      name: "${name} Cell voltage 1"
     cell_voltage_2:
       id: ${jk_bms_ble_id}_cell_voltage_2
-      name: "Cell voltage 2"
+      name: "${name} Cell voltage 2"
     cell_voltage_3:
       id: ${jk_bms_ble_id}_cell_voltage_3
-      name: "Cell voltage 3"
+      name: "${name} Cell voltage 3"
     cell_voltage_4:
       id: ${jk_bms_ble_id}_cell_voltage_4
-      name: "Cell voltage 4"
+      name: "${name} Cell voltage 4"
     cell_voltage_5:
       id: ${jk_bms_ble_id}_cell_voltage_5
-      name: "Cell voltage 5"
+      name: "${name} Cell voltage 5"
     cell_voltage_6:
       id: ${jk_bms_ble_id}_cell_voltage_6
-      name: "Cell voltage 6"
+      name: "${name} Cell voltage 6"
     cell_voltage_7:
       id: ${jk_bms_ble_id}_cell_voltage_7
-      name: "Cell voltage 7"
+      name: "${name} Cell voltage 7"
     cell_voltage_8:
       id: ${jk_bms_ble_id}_cell_voltage_8
-      name: "Cell voltage 8"
+      name: "${name} Cell voltage 8"
     cell_voltage_9:
       id: ${jk_bms_ble_id}_cell_voltage_9
-      name: "Cell voltage 9"
+      name: "${name} Cell voltage 9"
     cell_voltage_10:
       id: ${jk_bms_ble_id}_cell_voltage_10
-      name: "Cell voltage 10"
+      name: "${name} Cell voltage 10"
     cell_voltage_11:
       id: ${jk_bms_ble_id}_cell_voltage_11
-      name: "Cell voltage 11"
+      name: "${name} Cell voltage 11"
     cell_voltage_12:
       id: ${jk_bms_ble_id}_cell_voltage_12
-      name: "Cell voltage 12"
+      name: "${name} Cell voltage 12"
     cell_voltage_13:
       id: ${jk_bms_ble_id}_cell_voltage_13
-      name: "Cell voltage 13"
+      name: "${name} Cell voltage 13"
     cell_voltage_14:
       id: ${jk_bms_ble_id}_cell_voltage_14
-      name: "Cell voltage 14"
+      name: "${name} Cell voltage 14"
     cell_voltage_15:
       id: ${jk_bms_ble_id}_cell_voltage_15
-      name: "Cell voltage 15"
+      name: "${name} Cell voltage 15"
     cell_voltage_16:
       id: ${jk_bms_ble_id}_cell_voltage_16
-      name: "Cell voltage 16"
+      name: "${name} Cell voltage 16"
     cell_resistance_1:
       id: ${jk_bms_ble_id}_cell_resistance_1
-      name: "Cell resistance 1"
+      name: "${name} Cell resistance 1"
     cell_resistance_2:
       id: ${jk_bms_ble_id}_cell_resistance_2
-      name: "Cell resistance 2"
+      name: "${name} Cell resistance 2"
     cell_resistance_3:
       id: ${jk_bms_ble_id}_cell_resistance_3
-      name: "Cell resistance 3"
+      name: "${name} Cell resistance 3"
     cell_resistance_4:
       id: ${jk_bms_ble_id}_cell_resistance_4
-      name: "Cell resistance 4"
+      name: "${name} Cell resistance 4"
     cell_resistance_5:
       id: ${jk_bms_ble_id}_cell_resistance_5
-      name: "Cell resistance 5"
+      name: "${name} Cell resistance 5"
     cell_resistance_6:
       id: ${jk_bms_ble_id}_cell_resistance_6
-      name: "Cell resistance 6"
+      name: "${name} Cell resistance 6"
     cell_resistance_7:
       id: ${jk_bms_ble_id}_cell_resistance_7
-      name: "Cell resistance 7"
+      name: "${name} Cell resistance 7"
     cell_resistance_8:
       id: ${jk_bms_ble_id}_cell_resistance_8
-      name: "Cell resistance 8"
+      name: "${name} Cell resistance 8"
     cell_resistance_9:
       id: ${jk_bms_ble_id}_cell_resistance_9
-      name: "Cell resistance 9"
+      name: "${name} Cell resistance 9"
     cell_resistance_10:
       id: ${jk_bms_ble_id}_cell_resistance_10
-      name: "Cell resistance 10"
+      name: "${name} Cell resistance 10"
     cell_resistance_11:
       id: ${jk_bms_ble_id}_cell_resistance_11
-      name: "Cell resistance 11"
+      name: "${name} Cell resistance 11"
     cell_resistance_12:
       id: ${jk_bms_ble_id}_cell_resistance_12
-      name: "Cell resistance 12"
+      name: "${name} Cell resistance 12"
     cell_resistance_13:
       id: ${jk_bms_ble_id}_cell_resistance_13
-      name: "Cell resistance 13"
+      name: "${name} Cell resistance 13"
     cell_resistance_14:
       id: ${jk_bms_ble_id}_cell_resistance_14
-      name: "Cell resistance 14"
+      name: "${name} Cell resistance 14"
     cell_resistance_15:
       id: ${jk_bms_ble_id}_cell_resistance_15
-      name: "Cell resistance 15"
+      name: "${name} Cell resistance 15"
     cell_resistance_16:
       id: ${jk_bms_ble_id}_cell_resistance_16
-      name: "Cell resistance 16"
+      name: "${name} Cell resistance 16"
     total_voltage:
       id: ${jk_bms_ble_id}_total_voltage
-      name: "Total voltage"
+      name: "${name} Total voltage"
     current:
       id: ${jk_bms_ble_id}_current
-      name: "Current"
+      name: "${name} Current"
+      unit_of_measurement: A
+      device_class: current
+      state_class: measurement
     power:
       id: ${jk_bms_ble_id}_power
-      name: "Power"
+      name: "${name} Power"
     charging_power:
       id: ${jk_bms_ble_id}_charging_power
-      name: "Charging power"
+      name: "${name} Charging power"
       unit_of_measurement: W
-      device_class: energy
+      device_class: power
       state_class: measurement
       entity_category: diagnostic
     discharging_power:
       id: ${jk_bms_ble_id}_discharging_power
-      name: "Discharging power"
+      name: "${name} Discharging power"
       unit_of_measurement: W
-      device_class: energy
+      device_class: power
       state_class: measurement
       entity_category: diagnostic
     temperature_sensor_1:
       id: ${jk_bms_ble_id}_temperature_sensor_1
-      name: "Temperature sensor 1"
+      name: "${name} Temperature sensor 1"
     temperature_sensor_2:
       id: ${jk_bms_ble_id}_temperature_sensor_2
-      name: "Temperature sensor 2"
+      name: "${name} Temperature sensor 2"
     power_tube_temperature:
       id: ${jk_bms_ble_id}_power_tube_temperature
-      name: "Power tube temperature"
+      name: "${name} Power tube temperature"
     state_of_charge:
       id: ${jk_bms_ble_id}_soc
-      name: "State of charge"
+      name: "${name} State of charge"
     capacity_remaining:
       id: ${jk_bms_ble_id}_capacity_remaining
-      name: "Capacity remaining"
+      name: "${name} Capacity remaining"
     total_battery_capacity_setting:
       id: ${jk_bms_ble_id}_total_battery_capacity_setting
-      name: "Total battery capacity setting"
+      name: "${name} Total battery capacity setting"
     charging_cycles:
       id: ${jk_bms_ble_id}_charging_cycles
-      name: "Charging cycles"
+      name: "${name} Charging cycles"
     total_charging_cycle_capacity:
       id: ${jk_bms_ble_id}_total_charging_cycle_capacity
-      name: "Total charging cycle capacity"
+      name: "${name} Total charging cycle capacity"
       # Convert Ah to kAh
       state_class: "total_increasing"
       unit_of_measurement: kAh
@@ -423,16 +437,19 @@ sensor:
         - multiply: 0.001
     total_runtime:
       id: ${jk_bms_ble_id}_total_runtime
-      name: "Total runtime"
+      name: "${name} Total runtime"
     balancing_current:
       id: ${jk_bms_ble_id}_balancing_current
-      name: "Balancing current"
+      name: "${name} Balancing current"
+      unit_of_measurement: A
+      device_class: current
+      state_class: measurement
     errors_bitmask:
       id: ${jk_bms_ble_id}_errors_bitmask
-      name: "errors bitmask"
+      name: "${name} errors bitmask"
 
   - platform: total_daily_energy
-    name: "Total Charging Energy Today"
+    name: "${name} Total Charging Energy Today"
     power_id: ${jk_bms_ble_id}_charging_power
     unit_of_measurement: kWh
     icon: mdi:counter
@@ -442,7 +459,7 @@ sensor:
       - multiply: 0.001
 
   - platform: total_daily_energy
-    name: "Total Discharging Energy Today"
+    name: "${name} Total Discharging Energy Today"
     power_id: ${jk_bms_ble_id}_discharging_power
     unit_of_measurement: kWh
     icon: mdi:counter
@@ -455,50 +472,50 @@ switch:
   - platform: jk_bms_ble
     charging:
       id: ${jk_bms_ble_id}_charging_switch
-      name: "Charging"
+      name: "${name} Charging"
     discharging:
       id: ${jk_bms_ble_id}_discharging_switch
-      name: "Discharging"
+      name: "${name} Discharging"
     balancer:
       id: ${jk_bms_ble_id}_balancer_switch
-      name: "Balancer"
+      name: "${name} Balancer"
     emergency:
       id: ${jk_bms_ble_id}_emergency_switch
-      name: "emergency"
+      name: "${name} emergency"
     disable_temperature_sensors:
       id: ${jk_bms_ble_id}_disable_temperature_sensors_switch
-      name: "Disable temperature sensors"
+      name: "${name} Disable temperature sensors"
     display_always_on:
       id: ${jk_bms_ble_id}_display_always_on_switch
-      name: "Display always on"
+      name: "${name} Display always on"
 
   - platform: ble_client
     ble_client_id: ${bms_client}
     id: ${jk_bms_ble_id}_bluetooth_switch
-    name: "enable bluetooth connection"
+    name: "${name} enable bluetooth connection"
 
 text_sensor:
   - platform: version
-    name: "ESPHome Version"
+    name: "${name} ESPHome Version"
 
   - platform: wifi_info
     ip_address:
-      name: "${device_name} IP"
+      name: "${name} ${device_name} IP"
       update_interval: 120s
     ssid:
-      name: "${device_name} SSID"
+      name: "${name} ${device_name} SSID"
       update_interval: 120s
     bssid:
-      name: "${device_name} BSSID"
+      name: "${name} ${device_name} BSSID"
       update_interval: 120s
     mac_address:
-      name: "${device_name} MAC"
+      name: "${name} ${device_name} MAC"
     scan_results:
-      name: "${device_name} Latest Scan Results"
+      name: "${name} ${device_name} Latest Scan Results"
       update_interval: 120s
 
   - platform: template
-    name: "Uptime Human Readable"
+    name: "${name} Uptime Human Readable"
     id: ${device_id}_uptime_human
     icon: mdi:clock-start
     update_interval: 120s
@@ -506,7 +523,7 @@ text_sensor:
   - platform: jk_bms_ble
     errors:
       id: ${jk_bms_ble_id}_errors
-      name: "errors"
+      name: "${name} errors"
     total_runtime_formatted:
       id: ${jk_bms_ble_id}_total_runtime_formatted
-      name: "Total runtime formatted"
+      name: "${name} Total runtime formatted"

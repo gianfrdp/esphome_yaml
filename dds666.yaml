@@ -33,6 +33,12 @@ wifi:
     dns1: 8.8.8.8
     dns2: 192.168.2.1
 
+  reboot_timeout: 15min
+
+  ap:
+    ssid: "${device_name}"
+    password: !secret_ap_password
+
 web_server:
   port: 80
 
@@ -40,7 +46,7 @@ syslog:
   ip_address: "192.168.2.32"
   port: 514
   strip_colors: true
-  
+
 api:
   reboot_timeout: 0s
 
