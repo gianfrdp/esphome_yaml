@@ -5,7 +5,7 @@ This repository contains various YAML files for EspHome I use.
 - **[sdm220.yaml](https://github.com/gianfrdp/esphome_yaml/blob/main/sdm220.yaml)**: ModBus smartmeter Eastron SDM220
 - **[voltronic-7200.yaml](https://github.com/gianfrdp/esphome_yaml/blob/main/voltronic-7200.yaml)**: Voltronic Axpert Max 7200 Hybrid inverter using my fork and customizations [gianfrdp/esphome-pipsolar#pip8048](https://github.com/gianfrdp/esphome-pipsolar#pip8048) of [syssi/esphome-pipsolar#pip8048](https://github.com/syssi/esphome-pipsolar#pip8048)
 - **[jk-bms.yaml](https://github.com/gianfrdp/esphome_yaml/blob/main/jk-bms.yaml)**: JK BMS JK_02A20S20P ver 11 using Bluetotth BLE from [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms)
-- **[jkbms-soltaro.yaml](https://github.com/gianfrdp/esphome_yaml/blob/main/jkbms-soltaro.yaml)**: Connection for JK BMS and Voltronic inverter using SOLTARO CAN protocol starting from [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms). Following schema was used:
+- **[jk-bms-soltaro.yaml](https://github.com/gianfrdp/esphome_yaml/blob/main/jk-bms-soltaro.yaml)**: Connection for JK BMS and Voltronic inverter using SOLTARO CAN protocol starting from [syssi/esphome-jk-bms](https://github.com/syssi/esphome-jk-bms). Following schema was used:
 
 ```
                 Bluetooth                       UART-TTL                      CAN
