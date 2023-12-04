@@ -7,13 +7,16 @@ substitutions:
 
 esphome:
   name: ${name}
+  comment: "Grid meter: CHINT DDS666 modbus"
   platform: ESP32
   board: m5stack-atom
   platformio_options:
     upload_speed: 115200
 
 external_components:
-  - source: my_components
+  #- source: my_components
+  - source: github://TheStaticTurtle/esphome_syslog
+    components: [syslog]
 
 logger:
   #level: INFO
@@ -34,10 +37,11 @@ wifi:
     dns2: 192.168.2.1
 
   reboot_timeout: 15min
+  domain: .firtz.box
 
   ap:
-    ssid: "${device_name}"
-    password: !secret_ap_password
+    ssid: "${name}"
+    password: !secret ap_password
 
 web_server:
   port: 80
@@ -409,6 +413,23 @@ sensor:
       - multiply: 0.001
     unit_of_measurement: kWh
     accuracy_decimals: 3
+
+  - platform: template
+    name: "${name} Difference Energy"
+    id: ${id_name}_difference_energy
+    #description: Import - Export energy
+    device_class: energy
+    unit_of_measurement: "kWh"
+    accuracy_decimals: 3
+    lambda: |-
+        if (id(${id_name}_exp_ep_t1).state >= 0 and id(${id_name}_imp_ep_t1).state >= 0) {
+            float export_energy = float(id(${id_name}_exp_ep_t1).state);
+            float import_energy = float(id(${id_name}_imp_ep_t1).state);
+            float diff = import_energy - export_energy;
+            return { diff };
+        } else {
+            return {0};
+        }
 
 switch:
   - platform: modbus_controller

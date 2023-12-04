@@ -3,10 +3,14 @@ substitutions:
   friendly_name: Axpert Max 7.2
   name: Voltronic
   device_id: axpert_max_72
+  tx_pin: GPIO16 #GPIO23 # GPIO19
+  rx_pin: GPIO17 #GPIO22 # GPIO22
+  board: esp32dev #esp32dev #az-delivery-devkit-v4 # m5stack-atom # m5stack-atoms3 
+  ip: 192.168.4.46
 
 esphome:
   name: ${device_name}
-  comment: "Voltronic Axpert Max 7200 RS485 PIP30 protocol"
+  comment: "Voltronic Axpert Max 7200 RS232 PIP30 protocol. Working on 2023.10.3"
   #platform: ESP32
   #board: m5stack-atom
   platformio_options:
@@ -23,8 +27,8 @@ esphome:
   #        timeout: 5s
 
 esp32:
-    board: m5stack-atom
-    #board: m5stack-atoms3 
+    board: ${board}
+    flash_size: 4MB
     ######## Workaroud fro CRC error
     #framework:
     #  type: arduino
@@ -35,45 +39,61 @@ esp32:
 
 logger:
   level: DEBUG
+  hardware_uart: UART0
   #baud_rate: 0
-  logs:
-    binary_sensor: INFO
-    gpio.binary_sensor: INFO
-    homeassistant.time: INFO
-    light: INFO
-    main: INFO
-    mdns: INFO
-    mqtt: INFO
-    ota: INFO
-    pipsolar.select: DEBUG
-    pipsolar.switch: INFO
-    pipsolar.text: INFO
-    pipsolar: INFO
-    restart.button: INFO
-    select: INFO
-    sensor: INFO
-    switch: INFO
-    template: INFO
-    text_sensor: INFO
-    time: INFO
-    total_daily_energy: INFO
-    uart: DEBUG
-    uart_debug: DEBUG
-    uptime.sensor: INFO
-    version.text_sensor: INFO
-    web_server_base: INFO
-    web_server: INFO
-    wifi: INFO
-    wifi_info: INFO
-    wifi_signal.sensor: INFO
+  #logs:
+  #  binary_sensor: INFO
+  #  gpio.binary_sensor: INFO
+  #  homeassistant.time: DEBUG
+  #  uart.arduino_esp32: INFO
+  #  light: INFO
+  #  main: INFO
+  #  mdns: INFO
+  #  mqtt: INFO
+  #  mqtt.switch: INFO
+  #  mqtt.light: INFO
+  #  mqtt.select: INFO
+  #  mqtt.sensor: INFO
+  #  mqtt.button: INFO
+  #  mqtt.binary_sensor: INFO
+  #  mqtt.text_sensor: INFO
+  #  ota: INFO
+  #  pipsolar.select: INFO
+  #  pipsolar.switch: INFO
+  #  pipsolar.text: INFO
+  #  pipsolar: INFO
+  #  restart.button: INFO
+  #  select: INFO
+  #  sensor: INFO
+  #  sun: DEBUG
+  #  switch: INFO
+  #  template: INFO
+  #  template.sensor: INFO
+  #  template.binary_sensor: INFO
+  #  template.text_sensor: INFO
+  #  text_sensor: INFO
+  #  time: DEBUG
+  #  total_daily_energy: INFO
+  #  uart: INFO
+  #  uart_debug: INFO
+  #  uptime.sensor: INFO
+  #  version.text_sensor: INFO
+  #  web_server_base: INFO
+  #  web_server: INFO
+  #  wifi: INFO
+  #  wifi_info: INFO
+  #  wifi_signal.sensor: INFO
 
 external_components:
-  - source: my_components
-  - source: 
-      type: local
-      path: esphome-pipsolar/components
-    components: [ pipsolar ]
+  #- source: my_components
+  - source: github://TheStaticTurtle/esphome_syslog
+    components: [syslog]
+  #- source: 
+  #    type: local
+  #    path: esphome-pipsolar/components
+  #  components: [ pipsolar ]
   #- source: github://syssi/esphome-pipsolar@pip8048
+  - source: github://gianfrdp/esphome-pipsolar@pip8048
   #  refresh: 0s
     
 syslog:
@@ -82,7 +102,6 @@ syslog:
     strip_colors: true
 
 api:
-  reboot_timeout: 15min
 
 ota:
 
@@ -96,14 +115,15 @@ wifi:
   #use_address: 192.168.4.46
   
   manual_ip:
-    static_ip: 192.168.4.46
+    static_ip: ${ip}
     gateway: 192.168.2.1
     subnet: 255.255.240.0
     dns1: 192.168.2.1
     dns2: 8.8.8.8
 
-  domain: .firtzbox
+  domain: .firtz.box
   reboot_timeout: 15min
+  power_save_mode: none
 
   ap:
     ssid: "${device_name}"
@@ -118,11 +138,98 @@ mqtt:
   discovery_retain: false
   discovery_object_id_generator: device_name
 
-#captive_portal:
+captive_portal:
 
 time:
   - platform: homeassistant
+  #-  #platform: sntp
+    #update_interval: 15min
     id: homeassistant_time
+    #id: sntp_time
+    timezone: Europe/Rome
+    #servers: 192.168.2.1
+
+    on_time:
+      seconds: 0
+      minutes: /1
+      then:
+        #- logger.log: 
+        #    format: "On Time loop"
+        #    tag: "sun_shift"
+        #- globals.set: 
+        #    id: ${device_id}_global_sunset
+        #    value: !lambda 'return id(sun_sun).sunset(-27.82).state;'
+        #- globals.set: 
+        #    id: ${device_id}_global_sunrise
+        #    value: !lambda 'return id(sun_sun).sunrise(0).state;'
+        #- logger.log: 
+        #    format: "On Time loop. Sunrise: %s, Sunset: %s"
+        #    args: [ 'id(${device_id}_sunrise).state.c_str()', 'id(${device_id}_sunset).state.c_str()' ]
+        #    tag: "sun_shift"
+
+    #on_time:
+    #  seconds: 0
+    #  minutes: /1
+    #  then:
+        - lambda: |-
+            auto sunrise = id(sun_sun).sunrise(0);
+            auto sunset = id(sun_sun).sunset(-0.833); //set default elevaton -0.833 must settings. id(sun_sun).elevation() not ? 
+            bool sunrise_valid = sunrise.has_value();
+            bool sunset_valid = sunset.has_value();
+            
+            //auto sunset = id(sun_sun).sunset(-27.82);
+            auto time = id(homeassistant_time).now();
+            int shift_sunrise = id(${device_id}_sunrise_shift).state;
+            int shift_sunset = id(${device_id}_sunset_shift).state;
+            bool switch_state = id(${device_id}_auto_switch_source).state;
+    
+            if (sunrise_valid) {
+              int sunrise_shift_min;
+              if (shift_sunrise)
+                sunrise_shift_min = shift_sunrise;
+              else
+                sunrise_shift_min = 2 * 60;
+              //ESP_LOGD("sun_shift", "sunrise_shift_min: %d, shift_sunrise: %d, switch_state: %d", sunrise_shift_min, shift_sunrise, switch_state);
+              
+              id(sunrise_shift_ms) = sunrise_shift_min * 60 * 1000;
+
+              int sunrise_min = sunrise.value().hour * 60 + sunrise.value().minute + sunrise_shift_min;
+              int sunrise_hour = int(sunrise_min / 60);
+              int sunrise_minute = sunrise_min % 60;
+              ESP_LOGD("sun_shift", "[%02i:%02i](%d) Sunrise is %02i:%02i (%i) -> %02i:%02i", time.hour, time.minute, switch_state, sunrise.value().hour , sunrise.value().minute, sunrise_shift_min, sunrise_hour , sunrise_minute);
+              if((sunrise_hour == time.hour) && (sunrise_minute == time.minute) && switch_state) {
+                ESP_LOGD("sun_shift", "It's time to switch battery -> grid");
+                auto new_index = id(${device_id}_output_source_morning).active_index().value();
+                auto call = id(${device_id}_output_source_priority_select).make_call();
+                call.set_index(new_index);
+                call.perform();
+              }
+            }
+            
+            if (sunset_valid) {
+              int sunset_shift_min;
+              if (shift_sunset)
+                sunset_shift_min = shift_sunset;
+              else
+                sunset_shift_min = 2 * 60;
+              //ESP_LOGD("sun_shift", "sunset_shift_min: %d, shift_sunset: %d", sunset_shift_min, shift_sunset);
+            
+              int sunset_min = sunset.value().hour * 60 + sunset.value().minute + sunset_shift_min;
+              int sunset_hour = int(sunset_min / 60);
+              int sunset_minute = sunset_min % 60;
+              ESP_LOGD("sun_shift", "[%02i:%02i](%d) Sunset is %02i:%02i (%i) -> %02i:%02i", time.hour, time.minute, switch_state, sunset.value().hour , sunset.value().minute, sunset_shift_min, sunset_hour , sunset_minute);
+              
+              if((sunset_hour == time.hour) && (sunset_minute == time.minute) && switch_state) {
+                ESP_LOGD("sun_shift", "It's time to switch grid -> battery");
+                id(daytime_hr) = sunset_hour;
+                id(daytime_min) = sunset_minute;
+                
+                auto call = id(${device_id}_output_source_priority_select).make_call();
+                call.set_option("Solar Battery Utility (SBU)");
+                call.perform();
+              }
+            }
+            
 
 light:
 # - platform: fastled_clockless
@@ -142,27 +249,75 @@ button:
       - platform: restart
         id: ${device_id}_restart_button
         name: "Restart"
+      
+      - platform: template
+        id: ${device_id}_change_daily_pv
+        name: Change Daily PV Energy
+        on_press:
+          - logger.log: "Change Daily PV Energy Button Pressed"
+          - lambda: |-
+              float new_total = float(id(${device_id}_new_daily_pv_energy).state);
+              ${device_id}_total_daily_pv_energy->publish_state_and_save(new_total);
+
+      - platform: template
+        id: ${device_id}_change_daily_output
+        name: Change Daily Output Energy
+        on_press:
+          - logger.log: "Change Daily Output Energy Button Pressed"
+          - lambda: |-
+              float new_total = float(id(${device_id}_new_daily_output_energy).state);
+              ${device_id}_total_daily_output_energy->publish_state_and_save(new_total);
 
 uart:
   - id: uart_bus
-    rx_pin: GPIO22
-    tx_pin: GPIO19
-    #rx_pin: GPIO5
-    #tx_pin: GPIO6
+    rx_pin: ${rx_pin}
+    tx_pin: ${tx_pin}
+    # UART2 - TX: GPIO16, RX: GPIO17 (Only on ESP32)
     baud_rate: 2400
-    #debug:
-    #    direction: BOTH
-    #    dummy_receiver: false
-    #    after:
-    #      delimiter: "\n"
-    #    sequence:
-    #       - lambda: UARTDebug::log_string(direction, bytes);
+    debug:
+      direction: BOTH
+      dummy_receiver: false
+      after:
+        delimiter: "\r"
+      sequence:
+        - lambda: UARTDebug::log_string(direction, bytes);
 
 pipsolar:
   - uart_id: uart_bus
     id: ${device_id}
     #update_interval: 30s
-    update_interval: 10s
+    update_interval: 5s
+
+sun:
+    latitude: 42.165934431873275°
+    longitude: 14.319477618411547°
+    id: sun_sun
+
+    on_sunrise:
+      - then:
+          - logger.log: 
+              format: "Good morning! Should switch source priority in %i ms, %i min"
+              args:  ['id(sunrise_shift_ms)', '((id(sunrise_shift_ms))/1000)/60']
+          #    tag: sun
+          #- delay: !lambda "return id(sunrise_shift_ms);"
+          #- logger.log: 
+          #    format: It's time to switch battery -> grid!
+          #    tag: sun
+          #- if:
+          #    condition:
+          #      switch.is_on: ${device_id}_auto_switch_source
+          #    then:
+          #      - logger.log: Switching battery -> grid!
+          #      - select.set_index:
+          #          id: ${device_id}_output_source_priority_select
+          #          index: !lambda "return id(${device_id}_defualt_source_priority);"
+
+    on_sunset:
+      - elevation: 18.00°
+        then:
+          - logger.log:
+              format: Good evening!
+              tag: sun
 
 globals:
   - id: ${device_id}_global_pv1_power
@@ -173,6 +328,48 @@ globals:
     type: float
     restore_value: no
     initial_value: '0'
+  - id: daytime_hr
+    type: int
+    restore_value: true
+  - id: daytime_min
+    type: int
+    restore_value: true
+  - id: ${device_id}_auto_switch
+    type: bool
+    restore_value: true
+    initial_value: 'true'
+  - id: ${device_id}_defualt_source_priority
+    type: int
+    restore_value: true
+    initial_value: '1'
+  - id: sunrise_shift_ms
+    type: int
+    restore_value: true
+    initial_value: '120000'
+
+number:
+  - platform: template
+    name: Sunrise Shift
+    id: ${device_id}_sunrise_shift
+    min_value: 0
+    max_value: 240
+    step: 1
+    optimistic: true
+    restore_value: true
+    initial_value: 120
+    icon: 'mdi:weather-sunset-up'
+    entity_category: config
+  - platform: template
+    name: Sunset Shift
+    id: ${device_id}_sunset_shift
+    min_value: -240
+    max_value: 0
+    step: 1
+    optimistic: true
+    restore_value: true
+    initial_value: -90
+    icon: 'mdi:weather-sunset-down'
+    entity_category: config
 
 sensor:
   - platform: wifi_signal
@@ -190,6 +387,23 @@ sensor:
       return float(id(${device_id}_global_pv1_power)) + float(id(${device_id}_global_pv2_power));
     update_interval: 15s
 
+  - platform: template
+    id: ${device_id}_ac_output_current
+    name: "AC Output Current"
+    state_class: measurement
+    device_class: current
+    unit_of_measurement: A
+    lambda: |-
+      return float(id(${device_id}_ac_output_apparent_power).state) / float(id(${device_id}_ac_output_voltage).state);
+    update_interval: 15s
+
+  - platform: sun
+    name: Sun Elevation
+    type: elevation
+  - platform: sun
+    name: Sun Azimuth
+    type: Azimuth
+
   - platform: total_daily_energy
     name: "Total Daily Output Energy"
     power_id: ${device_id}_ac_output_active_power
@@ -199,6 +413,11 @@ sensor:
     unit_of_measurement: Wh
     state_class: total_increasing
     accuracy_decimals: 0
+    on_value: 
+      then:
+        - sensor.template.publish:
+            id: ${device_id}_ac_output_active_power_kwh
+            state: !lambda 'return float(float(x) / 1000);'
 
   - platform: total_daily_energy
     name: "Total Daily PV Energy"
@@ -209,6 +428,43 @@ sensor:
     unit_of_measurement: Wh
     state_class: total_increasing
     accuracy_decimals: 0
+    on_value: 
+      then:
+        - sensor.template.publish:
+            id: ${device_id}_total_daily_pv_energy_kwh
+            state: !lambda 'return float(float(x) / 1000);'
+
+  - platform: template
+    id: ${device_id}_total_daily_pv_energy_kwh
+    name: Total Daily PV Energy kWh
+    device_class: energy
+    unit_of_measurement: kWh
+    state_class: total_increasing
+    accuracy_decimals: 3 
+
+  - platform: template
+    id: ${device_id}_ac_output_active_power_kwh
+    name: Total Daily Output Energy kWh
+    device_class: energy
+    unit_of_measurement: kWh
+    state_class: total_increasing
+    accuracy_decimals: 3
+
+  - platform: homeassistant
+    name: "Voltronic New Daily PV Energy"
+    entity_id: input_number.voltronic_new_daily_pv_energy
+    id: ${device_id}_new_daily_pv_energy
+    icon: 'mdi:solar-panel'
+    device_class: energy
+    unit_of_measurement: Wh
+
+  - platform: homeassistant
+    name: "Voltronic New Daily Output Energy"
+    entity_id: input_number.voltronic_new_daily_output_energy
+    id: ${device_id}_new_daily_output_energy
+    icon: 'mdi:lightning-bolt'
+    device_class: energy
+    unit_of_measurement: Wh
 
   - platform: uptime
     name: "Uptime"
@@ -302,7 +558,6 @@ sensor:
     max_charging_time_at_cv_stage:
       id: ${device_id}_max_charging_time_at_cv_stage
       name: "Max. charging time at C.V stage"
-    
 
     # QPIGS
     grid_voltage:
@@ -397,9 +652,9 @@ sensor:
     #serial_number_0:
     #  id: ${device_id}_serial_number_0
     #  name: Serial Number 0
-    fault_code_0:
-      id: ${device_id}_fault_code_0
-      name: Fault_Code 0
+    #fault_code_0:
+    #  id: ${device_id}_fault_code_0
+    #  name: Fault_Code 0
     #grid_voltage_0:
     #  id: ${device_id}_grid_voltage_0
     #  name: AC Grid Voltage 0
@@ -435,7 +690,7 @@ sensor:
     #  name: PV1 Input Voltage 0
     #total_charging_current_0:
     #  id: ${device_id}_total_charging_current_0
-    #  name: Total Charging Current 0
+    #  name: Total Charging Current
     #total_ac_output_apparent_power_0:
     #  id: ${device_id}_total_ac_output_apparent_power_0
     #  name: Total AC Output Apparent Power 0
@@ -443,8 +698,8 @@ sensor:
     #  id: ${device_id}_total_output_active_power_0
     #  name: Total Output Active Power 0
     #total_ac_output_percentage_0:
-    #  id: ${device_id}_total_ac_output_percentage_0
-    #  name: Total AC Output Percentage 0
+    #  id: ${device_id}_total_ac_output_percentage
+    #  name: Total AC Output Percentage
     #inverter_status_battery_0:
     #  id: ${device_id}_inverter_status_battery_0
     #  name: Inverter Status Battery 0
@@ -504,13 +759,15 @@ sensor:
     time_until_float_charging:
       id: ${device_id}_time_until_float_charging
       name: Time Until Float Charging
-    scc_charge_power:
-      id: ${device_id}_scc_charge_power
-      name: SCC charge power
-      icon: 'mdi:solar-power'
-      device_class: power
-      unit_of_measurement: W
-    
+    #scc_charge_power:
+    #  id: ${device_id}_scc_charge_power
+    #  name: SCC charge power
+    #  icon: 'mdi:solar-power'
+    #  device_class: power
+    #  unit_of_measurement: W
+    fault_code:
+      id: ${device_id}_fault_code
+      name: "Fault Code"    
 
 binary_sensor:
   - platform: gpio
@@ -545,18 +802,18 @@ binary_sensor:
     load_status:
       id: ${device_id}_load_status
       name: "Load Status"
-    battery_voltage_to_steady_while_charging:
-      id: ${device_id}_battery_voltage_to_steady_while_charging
-      name: "Battery Voltage to Steady While Charging"
+    #battery_voltage_to_steady_while_charging:
+    #  id: ${device_id}_battery_voltage_to_steady_while_charging
+    #  name: "Battery Voltage to Steady While Charging"
     charging_status:
       id: ${device_id}_charging_status
       name: "Charging Status"
     scc_charging_status:
       id: ${device_id}_scc_charging_status
-      name: "SCC Charging Status"
+      name: "Charging Status SCC"
     ac_charging_status:
       id: ${device_id}_ac_charging_status
-      name: "AC Charging Status"
+      name: "Charging Status AC"
     charging_to_floating_mode:
       id: ${device_id}_charging_to_floating_mode
       name: "Charging to Floating Mode"
@@ -593,30 +850,130 @@ binary_sensor:
     #parallel_num_0:
     #  id: ${device_id}_parallel_num_0
     #  name: Parallel Num Valid
-    inverter_status_scc_0:
-      id: ${device_id}_inverter_status_scc_0
-      name: Inverter Status SCC 0
-    inverter_status_ac_charging_0:
-      id: ${device_id}_inverter_status_ac_charging_0
-      name: Inverter Status AC Charging 0
-    inverter_status_scc_charging_0:
-      id: ${device_id}_inverter_status_scc_charging_0
-      name: Inverter Status SCC Charging 0
-    inverter_status_line_0:
-      id: ${device_id}_inverter_status_line_0
-      name: Inverter Status Line 0
-    inverter_status_load_0:
-      id: ${device_id}_inverter_status_load_0
-      name: Inverter Status Load 0
-    inverter_status_configuration_0:
-      id: ${device_id}_inverter_status_configuration_0
-      name: Inverter Status Configuration 0
+    #inverter_status_scc_0:
+    #  id: ${device_id}_inverter_status_scc_0
+    #  name: Inverter Status SCC 0
+    #inverter_status_ac_charging_0:
+    #  id: ${device_id}_inverter_status_ac_charging_0
+    #  name: Inverter Status AC Charging 0
+    #inverter_status_scc_charging_0:
+    #  id: ${device_id}_inverter_status_scc_charging_0
+    #  name: Inverter Status SCC Charging 0
+    #inverter_status_line_0:
+    #  id: ${device_id}_inverter_status_line_0
+    #  name: Inverter Status Line 0
+    #inverter_status_load_0:
+    #  id: ${device_id}_inverter_status_load_0
+    #  name: Inverter Status Load 0
+    #inverter_status_configuration_0:
+    #  id: ${device_id}_inverter_status_configuration_0
+    #  name: Inverter Status Configuration 0
     fan_lock_status:
       id: ${device_id}_fan_lock_status
       name: Fan Lock status
 
+    warning_power_loss:
+      id: ${device_id}_warning_power_loss
+      name: "Warning: PV Power Loss"
+    fault_inverter_fault:
+      id: ${device_id}_fault_inverter_fault
+      name: "Fault: Inverter Fault"
+    fault_bus_over:
+      id: ${device_id}_fault_bus_over
+      name: "Fault: Bus Over Voltage"
+    fault_bus_under:
+      id: ${device_id}_fault_bus_under
+      name: "Fault: Bus Under Voltage"
+    fault_bus_soft_fail:
+      id: ${device_id}_fault_bus_soft_fail
+      name: "Fault: Bus Soft Fail"
+    warning_line_fail:
+      id: ${device_id}_warning_line_fail
+      name: "Warning: Line Fail"
+    fault_opvshort:
+      id: ${device_id}_fault_opvshort
+      name: "Fault: OVP Short"
+    fault_inverter_voltage_too_low:
+      id: ${device_id}_fault_inverter_voltage_too_low
+      name: "Fault: Inverter voltage too low"
+    fault_inverter_voltage_too_high:
+      id: ${device_id}_fault_inverter_voltage_too_high
+      name: "Fault: Inverter voltage too high"
+    warning_over_temperature:
+      id: ${device_id}_warning_over_temperature
+      name: "Warning: Over temperature*"
+    warning_fan_lock:
+      id: ${device_id}_warning_fan_lock
+      name: "Warning: Fan locked*"
+    warning_battery_voltage_high:
+      id: ${device_id}_warning_battery_voltage_high
+      name: "Warning: Battery voltage high*"
+    warning_battery_low_alarm:
+      id: ${device_id}_warning_battery_low_alarm
+      name: "Warning: Battery low alarm"
+    warning_battery_under_shutdown:
+      id: ${device_id}_warning_battery_under_shutdown
+      name: "Warning: Battery under shutdown"
+    warning_battery_derating:
+      id: ${device_id}_warning_battery_derating
+      name: "Warning: Battery derating"
+    warning_over_load:
+      id: ${device_id}_warning_over_load
+      name: "Warning: Over load*"
+    warning_eeprom_failed:
+      id: ${device_id}_warning_eeprom_failed
+      name: "Warning: Eeprom fault"
+    fault_inverter_over_current:
+      id: ${device_id}_fault_inverter_over_current
+      name: "Fault: Inverter Over Current"
+    fault_inverter_soft_failed:
+      id: ${device_id}_fault_inverter_soft_failed
+      name: "Fault: Inverter Soft Fail"
+    fault_self_test_failed:
+      id: ${device_id}_fault_self_test_failed
+      name: "Fault: Self Test Fail"
+    fault_op_dc_voltage_over:
+      id: ${device_id}_fault_op_dc_voltage_over
+      name: "Fault: OP DC Voltage Over"
+    fault_battery_open:
+      id: ${device_id}_fault_battery_open
+      name: "Fault: Battery Open"
+    fault_current_sensor_failed:
+      id: ${device_id}_fault_current_sensor_failed
+      name: "Fault: Current Sensor Fail"
+    fault_battery_short:
+      id: ${device_id}_fault_battery_short
+      name: "Fault: Battery Short"
+    warning_power_limit:
+      id: ${device_id}_warning_power_limit
+      name: "Warning: Power Limit"
+    warning_pv_voltage_high:
+      id: ${device_id}_warning_pv_voltage_high
+      name: "Warning: PV Voltage High"
+    fault_mppt_overload:
+      id: ${device_id}_fault_mppt_overload
+      name: "Fault: MPPT Overload"
+    warning_mppt_overload:
+      id: ${device_id}_warning_mppt_overload
+      name: "Warning: MPPT Overload"
+    warning_battery_too_low_to_charge:
+      id: ${device_id}_warning_battery_too_low_to_charge
+      name: "Warning: Battery too low to charge"
+    fault_dc_dc_over_current:
+      id: ${device_id}_fault_dc_dc_over_current
+      name: "Fault: DC/DC Over Current"
+    warning_battery_weak:
+      id: ${device_id}_warning_battery_weak
+      name: "Warning: Battery Weak"
+    warning_high_ac_input_during_bus_soft_start:
+      id: ${device_id}_warning_high_ac_input_during_bus_soft_start
+      name: "Warning: High AC Input during bus soft start"
+    warning_battery_equalization:
+      id: ${device_id}_warning_battery_equalization
+      name: "Warning: Battery equalization"
+
   - platform: template
-    name: ${device_name} Grid Input On
+    name: Grid Input On
     id: ${device_id}_grid_input_on
     lambda: |-
       if (id(${device_id}_grid_voltage).state > 0) {
@@ -633,18 +990,18 @@ text_sensor:
 
   - platform: wifi_info
     ip_address:
-      name: ${device_name} IP
+      name: IP
       update_interval: 120s
     ssid:
-      name: ${device_name} SSID
+      name: SSID
       update_interval: 120s
     bssid:
-      name: ${device_name} BSSID
+      name: BSSID
       update_interval: 120s
     mac_address:
-      name: ${device_name} MAC
+      name: MAC
     scan_results:
-      name: ${device_name} Latest Scan Results
+      name: Latest Scan Results
       update_interval: 120s
 
   - platform: template
@@ -653,8 +1010,25 @@ text_sensor:
     icon: mdi:clock-start
     update_interval: 120s
 
+  - platform: sun
+    name: Prossima Alba
+    id: ${device_id}_sunrise
+    type: sunrise
+  - platform: sun
+    name: Prossimo Tramonto
+    id: ${device_id}_sunset
+    type: Sunset
+
   - platform: pipsolar
     pipsolar_id: ${device_id}
+    inverter_date:
+      id: ${device_id}_inverter_date
+      name: Inverter Date
+
+    inverter_time:
+      id: ${device_id}_inverter_time
+      name: Inverter Time
+
     device_mode:
       id: ${device_id}_device_mode
       name: "Device Mode"
@@ -667,8 +1041,6 @@ text_sensor:
         - F -> Fault
         - H -> Power saving
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     operation_logic:
       id: ${device_id}_operation_logic
       name: Operation Logic
@@ -678,23 +1050,21 @@ text_sensor:
         - 1 -> On-Line
         - 2 -> Eco
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
-    work_mode_0:
-      id: ${device_id}_work_mode_0
-      name: Work Mode 0
-      filters:
-      - map:
-        - P -> Power On
-        - S -> Standby
-        - L -> Line
-        - B -> Battery
-        - F -> Fault
-        - H -> Power saving
+  #  work_mode_0:
+  #    id: ${device_id}_work_mode_0
+  #    name: Work Mode 0
+  #    filters:
+  #    - map:
+  #      - P -> Power On
+  #      - S -> Standby
+  #      - L -> Line
+  #      - B -> Battery
+  #      - F -> Fault
+  #      - H -> Power saving
 
     inverter_charge_status:
       id: ${device_id}_inverter_charge_status
-      name: Inverter Charge Status
+      name: Charge Mode
       filters:
         - map:
           - 10 -> No Charging
@@ -703,37 +1073,37 @@ text_sensor:
           - 13 -> Float
 
     #last_qpigs:
-    #  name: "${device_name} last_qpigs"
+    #  name: "last_qpigs"
     #last_qpiri:
-    #  name: "${device_name} last_qpiri"
+    #  name: "last_qpiri"
     #last_qmod:
-    #  name: "${device_name} last_qmod"
+    #  name: "last_qmod"
     #last_qflag:
-    #  name: "${device_name} last_qflag"
+    #  name: "last_qflag"
     #last_qpigs2:
-    #  name: "${device_name} last_qpigs2"
+    #  name: "last_qpigs2"
     #last_qpgs0:
-    #  name: "${device_name} last_qpgs0"
+    #  name: "last_qpgs0"
     #last_qpiws:
-    #  name: "${device_name} last_qpiws"
+    #  name: "last_qpiws"
     #last_qt:
-    #  name: "${device_name} last_qt"
+    #  name: "last_qt"
     #last_qmn :
-    #  name: "${device_name} last_qmn"
+    #  name: "last_qmn"
     #last_qet:
-    #  name: "${device_name} last_qet"
+    #  name: "last_qet"
     #last_qlt:
-    #  name: "${device_name} last_qlt"
+    #  name: "last_qlt"
     #last_qmchgcr:
-    #  name: "${device_name} last_qmchgcr"
+    #  name: "last_qmchgcr"
     #last_qmuchgcr:
-    #  name: "${device_name} last_qmuchgcr"
+    #  name: "last_qmuchgcr"
     #last_q1:
-    #  name: "${device_name} last_q1"
-    last_qbatcd:
-      name: "${device_name} last_qbatcd"
+    #  name: "last_q1"
+    #last_qbatcd:
+    #  name: "last_qbatcd"
     last_qbms:
-      name: "${device_name} last_qbms"
+      name: "last_qbms"
 
 switch:
   - platform: pipsolar
@@ -756,6 +1126,25 @@ switch:
     input_voltage_range:
       id: ${device_id}_input_voltage_range
       name: "Input Voltage Range (OFF: Appliance, ON: UPS)"
+
+  - platform: template
+    id: ${device_id}_auto_switch_source
+    name: "Auto switch source priority on Sunset/Sunrise"
+    #restore_state: true
+    restore_mode: RESTORE_DEFAULT_ON
+    optimistic: False
+    assumed_state: on
+    entity_category: config
+    turn_on_action: 
+      then:
+        - switch.template.publish: 
+            id: ${device_id}_auto_switch_source
+            state: ON
+    turn_off_action: 
+      then:
+        - switch.template.publish: 
+            id: ${device_id}_auto_switch_source
+            state: OFF
 
 #output:
 #  - platform: pipsolar
@@ -794,8 +1183,6 @@ select:
         "1": "Solar Utility Battery (SUB)"
         "2": "Solar Battery Utility (SBU)"
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     charging_discharging_control:
       id: ${device_id}_charging_discharging_control
       # See MAX_Communication_Protocol_20200526.pdf page 18
@@ -834,8 +1221,6 @@ select:
         # Cleaned the enable/disable discharger flags and return to previous discharger status.
         "000": "000 (Clean flags)"
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     charger_source_priority:
       id: ${device_id}_charger_source_priority
       name: Set Device charger priority
@@ -850,26 +1235,24 @@ select:
         "2": "Solar and utility (SNU)"
         "3": "Solar charging only (OSO)"
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     current_max_ac_charging_current:
       id: ${device_id}_current_max_ac_charging_current
       name: "Set Current Max AC Charging Current"
       # 002 010 020 030 040 050 060 070 080 090 100 110 120
       optionsmap:
-        "2A"  : "MUCHGC0002"
-        "10A" : "MUCHGC0010"
-        "20A" : "MUCHGC0020"
-        "30A" : "MUCHGC0030"
-        "40A" : "MUCHGC0040"
-        "50A" : "MUCHGC0050"
-        "60A" : "MUCHGC0060"
-        "70A" : "MUCHGC0070"
-        "80A" : "MUCHGC0080"
-        "90A" : "MUCHGC0090"
-        "100A": "MUCHGC0100"
-        "110A": "MUCHGC0110"
-        "120A": "MUCHGC0120"
+        "2A"  : "MUCHGC002"
+        "10A" : "MUCHGC010"
+        "20A" : "MUCHGC020"
+        "30A" : "MUCHGC030"
+        "40A" : "MUCHGC040"
+        "50A" : "MUCHGC050"
+        "60A" : "MUCHGC060"
+        "70A" : "MUCHGC070"
+        "80A" : "MUCHGC080"
+        #"90A" : "MUCHGC0090"
+        #"100A": "MUCHGC0100"
+        #"110A": "MUCHGC0110"
+        #"120A": "MUCHGC0120"
       statusmap:
         "2"  :   "2A"
         "10" :  "10A"
@@ -880,19 +1263,18 @@ select:
         "60" :  "60A"
         "70" :  "70A"
         "80" :  "80A"
-        "90" :  "90A"
-        "100": "100A"
-        "110": "110A"
-        "120": "120A"
+        #"90" :  "90A"
+        #"100": "100A"
+        #"110": "110A"
+        #"120": "120A"
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     current_max_charging_current:
       id: ${device_id}_current_max_charging_current
       name: "Set Current Max Charging Current"
       # MCHGC010 010 020 030 040 050 060 070 080 090 100 110 120
       optionsmap:
         "10A" : "MNCHGC0010"
+        "14A" : "MNCHGC0014"
         "20A" : "MNCHGC0020"
         "30A" : "MNCHGC0030"
         "40A" : "MNCHGC0040"
@@ -900,12 +1282,13 @@ select:
         "60A" : "MNCHGC0060"
         "70A" : "MNCHGC0070"
         "80A" : "MNCHGC0080"
-        "90A" : "MNCHGC0090"
-        "100A": "MNCHGC0100"
-        "110A": "MNCHGC0110"
-        "120A": "MNCHGC0120"
+        #"90A" : "MNCHGC0090"
+        #"100A": "MNCHGC0100"
+        #"110A": "MNCHGC0110"
+        #"120A": "MNCHGC0120"
       statusmap:
         "10" : "10A"
+        "14" : "14A"
         "20" : "20A"
         "30" : "30A"
         "40" : "40A"
@@ -913,13 +1296,11 @@ select:
         "60" : "60A"
         "70" : "70A"
         "80" : "80A"
-        "90" : "90A"
-        "100": "100A"
-        "110": "110A"
-        "120": "120A"
+        #"90" : "90A"
+        #"100": "100A"
+        #"110": "110A"
+        #"120": "120A"
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     max_discharging_current:
       id: ${device_id}_max_discharging_current_select
       name: "Set Max Discharging Current"
@@ -955,8 +1336,6 @@ select:
         "140": "140A"
         "150": "150A"
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     battery_type:
       id: ${device_id}_battery_type_select
       name: "Set Battery Type"
@@ -985,69 +1364,129 @@ select:
         "8": "LIB"
         "9": "LIC"
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     battery_recharge_voltage:
       id: ${device_id}_battery_recharge_voltage_select
       name: "Set Battery Re-Charge Voltage"
-      # Switch back to 'grid' when battery below 
+      # 13. Switch back to 'grid' when battery below 
       # 44.0, 45.0, 46.0, 47.0, 48.0, 49.0, 50.0, 51.0
+      # Setting voltage point back to utility source when selecting “SBU” (SBU priority) in program 01.
+      # Default: 46V
       optionsmap:
-        "44V": "PBCV44.0"
-        "45V": "PBCV45.0"
-        "46V": "PBCV46.0"
-        "47V": "PBCV47.0"
-        "48V": "PBCV48.0"
-        "49V": "PBCV49.0"
-        "50V": "PBCV50.0"
-        "51V": "PBCV51.0"
+        "44.0V" : "PBCV44.0"
+        "44.8V" : "PBCV44.8"
+        "45.0V" : "PBCV45.0"
+        "45.6V" : "PBCV45.6"
+        "46.0V" : "PBCV46.0"
+        "46.4V" : "PBCV46.4"
+        "47.0V" : "PBCV47.0"
+        "47.2V" : "PBCV47.2"
+        "48.0V" : "PBCV48.0"
+        "48.8V" : "PBCV48.8"
+        "49.0V" : "PBCV49.0"
+        "49.6V" : "PBCV49.6"
+        "50.0V" : "PBCV50.0"
+        "50.4V" : "PBCV50.4"
+        "51.0V" : "PBCV51.0"
+        "51.2V" : "PBCV51.2"
+        "52.0V" : "PBCV52.0"
+        "52.8V" : "PBCV52.8"
+        "53.0V" : "PBCV53.0"
+        "53.6V" : "PBCV53.6"
+        "54.0V" : "PBCV54.0"
+        "54.4V" : "PBCV54.4"
+        "54.8V" : "PBCV54.8"
+        "55.0V" : "PBCV55.0"
+        "55.2V" : "PBCV55.2"
+        "56.0V" : "PBCV56.0"
+        "56.8V" : "PBCV56.8"
+        "57.6V" : "PBCV57.6"
+        "58.4V" : "PBCV58.4"
       statusmap:
-         "44.0": "44V"
-         "45.0": "45V"
-         "46.0": "46V"
-         "47.0": "47V"
-         "48.0": "48V"
-         "49.0": "49V"
-         "50.0": "50V"
-         "51.0": "51V"
+        "44.0" : "44.0V"
+        "44.8" : "44.8V"
+        "45.0" : "45.0V"
+        "45.6" : "45.6V"
+        "46.0" : "46.0V"
+        "46.4" : "46.4V"
+        "47.0" : "47.0V"
+        "47.2" : "47.2V"
+        "48.0" : "48.0V"
+        "48.8" : "48.8V"
+        "49.0" : "49.0V"
+        "49.6" : "49.6V"
+        "50.0" : "50.0V"
+        "50.4" : "50.4V"
+        "51.0" : "51.0V"
+        "51.2" : "51.2V"
+        "52.0" : "52.0V"
+        "52.8" : "52.8V"
+        "53.0" : "53.0V"
+        "53.6" : "53.6V"
+        "54.0" : "54.0V"
+        "54.4" : "54.4V"
+        "54.8" : "54.8V"
+        "55.0" : "55.0V"
+        "55.2" : "55.2V"
+        "56.0" : "56.0V"
+        "56.8" : "56.8V"
+        "57.6" : "57.6V"
+        "58.4" : "58.4V"
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     battery_redischarge_voltage:
       id: ${device_id}_battery_redischarge_voltage_select
       name: "Set Battery Re-Discharge Voltage"
-      # Don't discharge the battery unless it is at 
+      # 12. Don't discharge the battery unless it is at 
       # 0, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58
       # 00.0V means battery is full (charging in float mode)
+      # Setting voltage point back to battery mode when selecting “SBU” (SBU priority) in program 01.
+      # Default: 54V
       optionsmap:
-        "Full": "PBDV00.0"
-        "48V" : "PBDV48.0"
-        "49V" : "PBDV49.0"
-        "50V" : "PBDV50.0"
-        "51V" : "PBDV51.0"
-        "52V" : "PBDV52.0"
-        "53V" : "PBDV53.0"
-        "54V" : "PBDV54.0"
-        "55V" : "PBDV55.0"
-        "56V" : "PBDV56.0"
-        "57V" : "PBDV57.0"
-        "58V" : "PBDV58.0"
+        "Full"  : "PBDV00.0"
+        "48.0V" : "PBDV48.0"
+        "48.8V" : "PBDV48.8"
+        "49.0V" : "PBDV49.0"
+        "49.6V" : "PBDV49.6"
+        "50.0V" : "PBDV50.0"
+        "50.4V" : "PBDV50.4"
+        "51.0V" : "PBDV51.0"
+        "51.2V" : "PBDV51.2"
+        "52.0V" : "PBDV52.0"
+        "52.8V" : "PBDV52.8"
+        "53.0V" : "PBDV53.0"
+        "53.6V" : "PBDV53.6"
+        "54.0V" : "PBDV54.0"
+        "54.4V" : "PBDV54.4"
+        "54.8V" : "PBDV54.8"
+        "55.0V" : "PBDV55.0"
+        "55.2V" : "PBDV55.2"
+        "56.0V" : "PBDV56.0"
+        "56.8V" : "PBDV56.8"
+        "57.6V" : "PBDV57.6"
+        "58.4V" : "PBDV58.4"
       statusmap:
-        "0"   : "Full"
-        "48.0": "48V" 
-        "49.0": "49V" 
-        "50.0": "50V" 
-        "51.0": "51V" 
-        "52.0": "52V" 
-        "53.0": "53V" 
-        "54.0": "54V" 
-        "55.0": "55V" 
-        "56.0": "56V" 
-        "57.0": "57V" 
-        "58.0": "58V" 
+        "0"    : "Full"
+        "48.0" : "48.0V"
+        "48.8" : "48.8V"
+        "49.0" : "49.0V"
+        "49.6" : "49.6V"
+        "50.0" : "50.0V"
+        "50.4" : "50.4V"
+        "51.0" : "51.0V"
+        "51.2" : "51.2V"
+        "52.0" : "52.0V"
+        "52.8" : "52.8V"
+        "53.0" : "53.0V"
+        "53.6" : "53.6V"
+        "54.0" : "54.0V"
+        "54.4" : "54.4V"
+        "54.8" : "54.8V"
+        "55.0" : "55.0V"
+        "55.2" : "55.2V"
+        "56.0" : "56.0V"
+        "56.8" : "56.8V"
+        "57.6" : "57.6V"
+        "58.4" : "58.4V"
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     battery_cutoff_voltage:
       id: ${device_id}_battery_cutoff_voltage_select
       name: "Set Battery Cut-Off Voltage"
@@ -1065,24 +1504,22 @@ select:
         "47.2V" : "PSDV47.2"
         "48.0V" : "PSDV48.0"
       statusmap:
-        "42.0": "42.0V"
-        "42.4": "42.4V"
-        "43.2": "43.2V"
-        "44.0": "44.0V"
-        "44.8": "44.8V"
-        "45.6": "45.6V"
-        "46.4": "46.4V"
-        "47.2": "47.2V"
-        "48.0": "48.0V"
+        "42.0" : "42.0V"
+        "42.4" : "42.4V"
+        "43.2" : "43.2V"
+        "44.0" : "44.0V"
+        "44.8" : "44.8V"
+        "45.6" : "45.6V"
+        "46.4" : "46.4V"
+        "47.2" : "47.2V"
+        "48.0" : "48.0V"
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     battery_bulk_voltage:
       id: ${device_id}_battery_bulk_voltage_select
       name: "Set Battery Bulk Voltage"
       # 26. Bulk charging voltage (C.V voltage)
-      # 48.0, 48.8, 49.6, 50.4, 51.2, 52.0, 52.8, 53.6, 54.4, 55.2, 56.0, 56.8, 57.6, 58.4
-      #  3.0,  3.05, 3.1,  3.15, 3.2,  3.25, 3.3,  3.35, 3.4,  3.45, 3.5,  3.55, 3.6,  3.65
+      # 48.0, 48.8, 49.6, 50.4, 51.2, 52.0, 52.8, 53.6, 54.4, 54.8, 55.2, 56.0, 56.8, 57.6, 58.4
+      #  3.0,  3.05, 3.1,  3.15, 3.2,  3.25, 3.3,  3.35, 3.4, 3.425, 3.45, 3.5,  3.55, 3.6,  3.65
       optionsmap:
         "48.0V" : "PCVV48.0"
         "48.8V" : "PCVV48.8"
@@ -1093,7 +1530,10 @@ select:
         "52.8V" : "PCVV52.8"
         "53.6V" : "PCVV53.6"
         "54.4V" : "PCVV54.4"
+        "54.8V" : "PCVV54.8"
         "55.2V" : "PCVV55.2"
+        "55.4V" : "PCVV55.4"
+        "55.6V" : "PCVV55.6"
         "56.0V" : "PCVV56.0"
         "56.8V" : "PCVV56.8"
         "57.6V" : "PCVV57.6"
@@ -1108,14 +1548,15 @@ select:
         "52.8": "52.8V"
         "53.6": "53.6V"
         "54.4": "54.4V"
+        "54.8": "54.8V"
         "55.2": "55.2V"
+        "55.4": "55.4V"
+        "55.6": "55.6V"
         "56.0": "56.0V"
         "56.8": "56.8V"
         "57.6": "57.6V"
         "58.4": "58.4V"
 
-  - platform: pipsolar
-    pipsolar_id: ${device_id}
     battery_float_voltage:
       id: ${device_id}_battery_float_voltage_select
       name: "Set Battery Float Voltage"
@@ -1132,7 +1573,10 @@ select:
         "52.8V" : "PBFT52.8"
         "53.6V" : "PBFT53.6"
         "54.4V" : "PBFT54.4"
+        "54.8V" : "PBFT54.8"
         "55.2V" : "PBFT55.2"
+        "55.4V" : "PBFT55.4"
+        "55.6V" : "PBFT55.6"
         "56.0V" : "PBFT56.0"
         "56.8V" : "PBFT56.8"
         "57.6V" : "PBFT57.6"
@@ -1147,14 +1591,15 @@ select:
         "52.8": "52.8V"
         "53.6": "53.6V"
         "54.4": "54.4V"
+        "54.8": "54.8V"
         "55.2": "55.2V"
+        "55.4": "55.4V"
+        "55.6": "55.6V"
         "56.0": "56.0V"
         "56.8": "56.8V"
         "57.6": "57.6V"
         "58.4": "58.4V"
 
-#  - platform: pipsolar
-#    pipsolar_id: ${device_id}
 #    bms_values:
 #      id: ${device_id}_bms_values
 #      name: "BMS values"
@@ -1175,3 +1620,69 @@ select:
 #              args: ["x.c_str()", "i"]
 #          - uart.write: [0x50, 0x42, 0x4d, 0x53, 0x31, 0x20, 0x31, 0x30, 0x20, 0x30, 0x20, 0x30, 0x20, 0x31, 0x20, 0x31, 0x20, 0x35, 0x36, 0x30, 0x20, 0x35, 0x36, 0x30, 0x20, 0x34, 0x38, 0x30, 0x20, 0x35, 0x30, 0x30, 0x20, 0x35, 0x30, 0x30, 0x8b, 0xed, 0x0d]
 #          #- uart.write: 'PBMS1 10 0 0 1 1 560 560 480 500 500\x8d\xeb\r'
+
+  - platform: template
+    id: ${device_id}_output_source_morning
+    name: Morning Output Priority
+    restore_value: true
+    entity_category: config
+    options:
+      - "Utility first (USB)"
+      - "Solar Utility Battery (SUB)"
+      - "Solar Battery Utility (SBU)"
+    set_action:
+      then:
+        - logger.log:
+            format: "Morning Charge Priority. Chosen option: %s"
+            args: ["x.c_str()"]
+        - lambda: id(${device_id}_output_source_morning).publish_state(x);
+        - globals.set:
+            id: ${device_id}_defualt_source_priority
+            value: !lambda "return id(${device_id}_output_source_morning).active_index().value();"
+
+#interval:
+#  - interval: 46s
+#    then:
+      # PI30/PI30MAX/PI30REVO/PI41
+#      - logger.log:
+#          level: INFO
+#          format: "Testing PI30/PI30MAX/PI30REVO/PI41 commands..."
+#      - logger.log:
+#          level: INFO
+#          format: "This is the set of commands supported by the pipsolar component!"
+#      - uart.write: [0x51, 0x50, 0x49, 0xBE, 0xAC, 0x0D]  # QPI\xbe\xac\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x44, 0x49, 0x71, 0x1B, 0x0D]  # QDIq\x1b\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x46, 0x4C, 0x41, 0x47, 0x98, 0x74, 0x0D]  # QFLAG\x98t\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x4D, 0x4E, 0xBB, 0x64, 0x0D]  # QMN\xbbd\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x4D, 0x4F, 0x44, 0x49, 0xC1, 0x0D]  # QMODI\xc1\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x50, 0x49, 0x47, 0x53, 0xB7, 0xA9, 0x0D]  # QPIGS\xB7\xA9\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x50, 0x49, 0x52, 0x49, 0xF8, 0x54, 0x0D]  # QPIRI\xF8T\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x50, 0x49, 0x57, 0x53, 0xB4, 0xDA, 0x0D]  # QPIWS\xb4\xda\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x54, 0x27, 0xFF, 0x0D]  # QT'\xff\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x31, 0x1B, 0xFC, 0x0D]  # Q1\x1b\xfc\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x42, 0x56, 0x38, 0x63, 0x0D] # QBV = "QBV\x38\x63\r";
+
+      # PI41 split phase
+#      - logger.log:
+#          level: INFO
+#          format: "Testing PI41 split phase / multiple strings commands..."
+#      - uart.write: [0x51, 0x50, 0x49, 0x47, 0x53, 0x32, 0x68, 0x2D, 0x0D]  # QPIGS2h-\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x50, 0x32, 0x47, 0x53, 0x30, 0x14, 0x05, 0x0D]  # QP2GS0\x14\x05\r
+#      - delay: 2s
+#      - uart.write: [0x51, 0x50, 0x32, 0x47, 0x53, 0x31, 0x04, 0x24, 0x0D]  # QP2GS1\x04$\r
+#      - delay: 2s
+      
+#      - logger.log:
+#          level: INFO
+#          format: "Done. Repeating..."

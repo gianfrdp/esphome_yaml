@@ -1,0 +1,732 @@
+substitutions:
+  device_name: "jk-bms"
+  device_description: "Monitor and control a JK-BMS via bluetooth and send data to inverter via CANBUS using Soltaro protocol"
+  friendly_name: "JK BMS to Voltronic"
+  name: ${device_name}
+  device_id: jkbms_voltronic
+  bms_client: client0
+  jk_bms_ble_id: bms0
+  mac_address: C8:47:8C:EC:BF:F3
+  protocol_version: JK02_32S
+
+esphome:
+  name: ${device_name}
+  comment: ${device_description}
+  #friendly_name: ${friendly_name}
+  platformio_options:
+    upload_speed: 115200
+    build_flags:
+      - -DCONFIG_ARDUINO_LOOP_STACK_SIZE=32768
+  project:
+    name: "Syssi.esphome-jk-bms"
+    version: 1.4.0
+
+  #on_boot:
+  #  priority: 200
+  #  then:
+  #    - wait_until:
+  #        condition:
+  #          wifi.connected:
+  #        timeout: 5s
+
+esp32:
+  #board: m5stack-atom
+  board: az-delivery-devkit-v4
+  framework:
+    type: esp-idf
+    version: recommended
+    #platform_version: 6.2.0
+    #type: arduino
+
+external_components:
+  #- source: my_components
+  - source: github://syssi/esphome-jk-bms@main
+    refresh: 0s
+  #- source: github://spali/esphome@pr3500
+  #  components:
+  #    - web_server
+  #    - web_server_idf
+  #    - web_server_base
+  #    - captive_portal
+  #  refresh: 0s
+
+web_server:
+  local: false
+
+captive_portal:
+
+improv_serial:
+
+#syslog:
+#  ip_address: "192.168.2.32"
+#  port: 514
+#  strip_colors: True
+
+wifi:
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+    - ssid: !secret wifi_ssid_2
+      password: !secret wifi_password_2
+
+  manual_ip:
+    static_ip: 192.168.4.60
+    gateway: 192.168.2.1
+    subnet: 255.255.240.0
+    dns1: 192.168.2.1
+    dns2: 8.8.8.8
+
+  domain: .firtz.box
+  reboot_timeout: 15min
+
+  ap:
+    ssid: "${name}"
+    password: !secret ap_password
+
+time:
+  #- platform: sntp
+  #  id: sntp_time
+    #servers: 192.168.2.1
+    #timezone: Europe/Rome
+  - platform: homeassistant
+    id: homeassistant_time
+
+ota:
+  on_begin:
+    then:
+      - switch.turn_off: ${jk_bms_ble_id}_bluetooth_switch
+
+logger:
+  level: DEBUG
+  hardware_uart: UART0
+  baud_rate: 115200
+  logs:
+    esp32_ble_tracker: INFO
+    esp-idf: INFO
+    jk_bms_ble: INFO
+    scheduler: INFO
+    component: INFO
+    sensor: INFO
+    mqtt: INFO
+    mqtt.idf: INFO
+    mqtt.component: INFO
+    mqtt.sensor: INFO
+    mqtt.switch: INFO
+    api.service: INFO
+    api: INFO
+  
+
+# If you don't use Home Assistant please remove this `api` section and uncomment the `mqtt` component!
+api:
+
+#mqtt:
+#  broker: 192.168.2.32
+#  client_id: ${device_id}
+#  discovery_retain: false
+#  discovery_object_id_generator: device_name
+
+esp32_ble_tracker:
+#  on_ble_advertise:
+#    then:
+#      - lambda: |-
+#          if (x.get_name().rfind("JK-", 0) == 0) {
+#            ESP_LOGI("ble_adv", "New JK-BMS found");
+#            ESP_LOGI("ble_adv", "  Name: %s", x.get_name().c_str());
+#            ESP_LOGI("ble_adv", "  MAC address: %s", x.address_str().c_str());
+#            ESP_LOGD("ble_adv", "  Advertised service UUIDs:");
+#            for (auto uuid : x.get_service_uuids()) {
+#              ESP_LOGD("ble_adv", "    - %s", uuid.to_string().c_str());
+#            }
+#          }
+
+ble_client:
+  - mac_address: ${mac_address}
+    id: ${bms_client}
+
+jk_bms_ble:
+  - ble_client_id: ${bms_client}
+    protocol_version: ${protocol_version}
+    throttle: 5s
+    #throttle: 10s
+    id: ${jk_bms_ble_id}
+
+canbus:
+  - platform: esp32_can
+    tx_pin: GPIO25
+    rx_pin: GPIO19
+    can_id: 0x1fff
+    id: canbus0
+    use_extended_id: true
+    bit_rate: 500kbps
+
+globals:
+  - id: ${device_id}_default_absorb
+    type: float
+    restore_value: yes
+    initial_value: '554'
+  - id: ${device_id}_default_bulk
+    type: float
+    restore_value: yes
+    initial_value: '554'
+  - id: ${device_id}_default_cutoff
+    type: float
+    restore_value: yes
+    initial_value: '480'
+
+binary_sensor:
+  #- platform: gpio
+  #  pin:
+  #    number: 39
+  #    inverted: true
+  #  name: Button
+  #  on_click:
+  #    #- min_length: 200ms
+  #    #  max_length: 900ms
+  #    #  then:
+  #    #    - light.toggle: status_led
+  #    - min_length: 1000ms
+  #      max_length: 5000ms
+  #      then:
+  #        - button.press: ${device_id}_restart_button
+  #  #on_press:
+  #  #  then:
+  #  #    - light.toggle: status_led
+
+  - platform: jk_bms_ble
+    balancing:
+      id: ${jk_bms_ble_id}_balancing
+      name: "${name} Balancing"
+    charging:
+      id: ${jk_bms_ble_id}_charging
+      name: "${name} Charging"
+    discharging:
+      id: ${jk_bms_ble_id}_discharging
+      name: "${name} Discharging"
+    online_status:
+      id: ${jk_bms_ble_id}_online_status
+      name: "${name} Online status"
+      on_release:
+        if:
+          condition:
+            for:
+              time: 2min
+              condition:
+                binary_sensor.is_off: ${jk_bms_ble_id}_online_status
+          then:
+            - logger.log: "No BLE connection for 2 min, rebooting"
+            - button.press: ${device_id}_restart_button
+
+button:
+  - platform: jk_bms_ble
+    retrieve_settings:
+      id: ${jk_bms_ble_id}_retrieve_settings_btn
+      name: "${name} Retrieve settings"
+    retrieve_device_info:
+      id: ${jk_bms_ble_id}_retrieve_device_info_btn
+      name: "${name} Retrieve device info"
+
+  - platform: restart
+    id: ${device_id}_restart_button
+    name: "${name} Restart"
+
+number:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: ${jk_bms_ble_id}
+    balance_trigger_voltage:
+      id: ${jk_bms_ble_id}_balance_trigger_voltage
+      name: "${name} Balance trigger voltage"
+    cell_count:
+      id: ${jk_bms_ble_id}_cell_count
+      name: "${name} Cell count"
+    total_battery_capacity:
+      id: ${jk_bms_ble_id}_total_battery_capacity
+      name: "${name} Total battery capacity"
+    cell_voltage_overvoltage_protection:
+      id: ${jk_bms_ble_id}_cell_voltage_overvoltage_protection
+      name: "${name} Cell voltage overvoltage protection"
+    cell_voltage_overvoltage_recovery:
+      id: ${jk_bms_ble_id}_cell_voltage_overvoltage_recovery
+      name: "${name} Cell voltage overvoltage recovery"
+    cell_voltage_undervoltage_protection:
+      id: ${jk_bms_ble_id}_cell_voltage_undervoltage_protection
+      name: "${name} Cell voltage undervoltage protection"
+    cell_voltage_undervoltage_recovery:
+      id: ${jk_bms_ble_id}_cell_voltage_undervoltage_recovery
+      name: "${name} Cell voltage undervoltage recovery"
+    balance_starting_voltage:
+      id: ${jk_bms_ble_id}_balance_starting_voltage
+      name: "${name} Balance starting voltage"
+    voltage_calibration:
+      id: ${jk_bms_ble_id}_voltage_calibration
+      name: "${name} Voltage calibration"
+    current_calibration:
+      id: ${jk_bms_ble_id}_current_calibration
+      name: "${name} Current calibration"
+      unit_of_measurement: A
+      device_class: current
+    power_off_voltage:
+      id: ${jk_bms_ble_id}_power_off_voltage
+      name: "${name} Power off voltage"
+    max_balance_current:
+      id: ${jk_bms_ble_id}_max_balance_current
+      name: "${name} Max balance current"
+      unit_of_measurement: A
+      device_class: current
+    max_charge_current:
+      id: ${jk_bms_ble_id}_max_charge_current
+      name: "${name} Max charge current"
+      unit_of_measurement: A
+      device_class: current
+    max_discharge_current:
+      id: ${jk_bms_ble_id}_max_discharge_current
+      name: "${name} Max discharge current"
+      unit_of_measurement: A
+      device_class: current
+
+  - platform: template
+    name: BMS Charge Current
+    id: ${device_id}_charge_current
+    min_value: 10
+    max_value: 120
+    step: 10
+    optimistic: true
+    restore_value: true
+    icon: mdi:sine-wave
+    device_class: current
+
+sensor:
+  - platform: wifi_signal
+    name: "${name} WiFi Signal"
+    update_interval: 300s
+  - platform: uptime
+    name: "${name} Uptime"
+    id: ${device_id}_uptime_sensor
+    update_interval: 300s
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: ${device_id}_uptime_human
+            state: !lambda |-
+              int seconds = round(id(${device_id}_uptime_sensor).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds = seconds % (24 * 3600);
+              int hours = seconds / 3600;
+              seconds = seconds % 3600;
+              int minutes = seconds /  60;
+              seconds = seconds % 60;
+              return (
+                      (days ? to_string(days) + "d " : "") +
+                      (hours ? to_string(hours) + "h " : "") +
+                      (minutes ? to_string(minutes) + "m " : "") +
+                      (to_string(seconds) + "s")
+                    ).c_str();
+
+  - platform: jk_bms_ble
+    jk_bms_ble_id: ${jk_bms_ble_id}
+    min_cell_voltage:
+      id: ${jk_bms_ble_id}_min_cell_voltage
+      name: "${name} Min cell voltage"
+    max_cell_voltage:
+      id: ${jk_bms_ble_id}_max_cell_voltage
+      name: "${name} Max cell voltage"
+    min_voltage_cell:
+      id: ${jk_bms_ble_id}_min_voltage_cell
+      name: "${name} Min voltage cell"
+    max_voltage_cell:
+      id: ${jk_bms_ble_id}_max_voltage_cell
+      name: "${name} Max voltage cell"
+    delta_cell_voltage:
+      id: ${jk_bms_ble_id}_delta_cell_voltage
+      name: "${name} Delta cell voltage"
+    average_cell_voltage:
+      id: ${jk_bms_ble_id}_average_cell_voltage
+      name: "${name} Average cell voltage"
+    cell_voltage_1:
+      id: ${jk_bms_ble_id}_cell_voltage_1
+      name: "${name} Cell voltage 1"
+    cell_voltage_2:
+      id: ${jk_bms_ble_id}_cell_voltage_2
+      name: "${name} Cell voltage 2"
+    cell_voltage_3:
+      id: ${jk_bms_ble_id}_cell_voltage_3
+      name: "${name} Cell voltage 3"
+    cell_voltage_4:
+      id: ${jk_bms_ble_id}_cell_voltage_4
+      name: "${name} Cell voltage 4"
+    cell_voltage_5:
+      id: ${jk_bms_ble_id}_cell_voltage_5
+      name: "${name} Cell voltage 5"
+    cell_voltage_6:
+      id: ${jk_bms_ble_id}_cell_voltage_6
+      name: "${name} Cell voltage 6"
+    cell_voltage_7:
+      id: ${jk_bms_ble_id}_cell_voltage_7
+      name: "${name} Cell voltage 7"
+    cell_voltage_8:
+      id: ${jk_bms_ble_id}_cell_voltage_8
+      name: "${name} Cell voltage 8"
+    cell_voltage_9:
+      id: ${jk_bms_ble_id}_cell_voltage_9
+      name: "${name} Cell voltage 9"
+    cell_voltage_10:
+      id: ${jk_bms_ble_id}_cell_voltage_10
+      name: "${name} Cell voltage 10"
+    cell_voltage_11:
+      id: ${jk_bms_ble_id}_cell_voltage_11
+      name: "${name} Cell voltage 11"
+    cell_voltage_12:
+      id: ${jk_bms_ble_id}_cell_voltage_12
+      name: "${name} Cell voltage 12"
+    cell_voltage_13:
+      id: ${jk_bms_ble_id}_cell_voltage_13
+      name: "${name} Cell voltage 13"
+    cell_voltage_14:
+      id: ${jk_bms_ble_id}_cell_voltage_14
+      name: "${name} Cell voltage 14"
+    cell_voltage_15:
+      id: ${jk_bms_ble_id}_cell_voltage_15
+      name: "${name} Cell voltage 15"
+    cell_voltage_16:
+      id: ${jk_bms_ble_id}_cell_voltage_16
+      name: "${name} Cell voltage 16"
+    cell_resistance_1:
+      id: ${jk_bms_ble_id}_cell_resistance_1
+      name: "${name} Cell resistance 1"
+    cell_resistance_2:
+      id: ${jk_bms_ble_id}_cell_resistance_2
+      name: "${name} Cell resistance 2"
+    cell_resistance_3:
+      id: ${jk_bms_ble_id}_cell_resistance_3
+      name: "${name} Cell resistance 3"
+    cell_resistance_4:
+      id: ${jk_bms_ble_id}_cell_resistance_4
+      name: "${name} Cell resistance 4"
+    cell_resistance_5:
+      id: ${jk_bms_ble_id}_cell_resistance_5
+      name: "${name} Cell resistance 5"
+    cell_resistance_6:
+      id: ${jk_bms_ble_id}_cell_resistance_6
+      name: "${name} Cell resistance 6"
+    cell_resistance_7:
+      id: ${jk_bms_ble_id}_cell_resistance_7
+      name: "${name} Cell resistance 7"
+    cell_resistance_8:
+      id: ${jk_bms_ble_id}_cell_resistance_8
+      name: "${name} Cell resistance 8"
+    cell_resistance_9:
+      id: ${jk_bms_ble_id}_cell_resistance_9
+      name: "${name} Cell resistance 9"
+    cell_resistance_10:
+      id: ${jk_bms_ble_id}_cell_resistance_10
+      name: "${name} Cell resistance 10"
+    cell_resistance_11:
+      id: ${jk_bms_ble_id}_cell_resistance_11
+      name: "${name} Cell resistance 11"
+    cell_resistance_12:
+      id: ${jk_bms_ble_id}_cell_resistance_12
+      name: "${name} Cell resistance 12"
+    cell_resistance_13:
+      id: ${jk_bms_ble_id}_cell_resistance_13
+      name: "${name} Cell resistance 13"
+    cell_resistance_14:
+      id: ${jk_bms_ble_id}_cell_resistance_14
+      name: "${name} Cell resistance 14"
+    cell_resistance_15:
+      id: ${jk_bms_ble_id}_cell_resistance_15
+      name: "${name} Cell resistance 15"
+    cell_resistance_16:
+      id: ${jk_bms_ble_id}_cell_resistance_16
+      name: "${name} Cell resistance 16"
+    total_voltage:
+      id: ${jk_bms_ble_id}_total_voltage
+      name: "${name} Total voltage"
+    current:
+      id: ${jk_bms_ble_id}_current
+      name: "${name} Current"
+      unit_of_measurement: A
+      device_class: current
+      state_class: measurement
+    power:
+      id: ${jk_bms_ble_id}_power
+      name: "${name} Power"
+    charging_power:
+      id: ${jk_bms_ble_id}_charging_power
+      name: "${name} Charging power"
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      entity_category: diagnostic
+    discharging_power:
+      id: ${jk_bms_ble_id}_discharging_power
+      name: "${name} Discharging power"
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
+      entity_category: diagnostic
+    temperature_sensor_1:
+      id: ${jk_bms_ble_id}_temperature_sensor_1
+      name: "${name} Temperature sensor 1"
+    temperature_sensor_2:
+      id: ${jk_bms_ble_id}_temperature_sensor_2
+      name: "${name} Temperature sensor 2"
+    power_tube_temperature:
+      id: ${jk_bms_ble_id}_power_tube_temperature
+      name: "${name} Power tube temperature"
+    state_of_charge:
+      id: ${jk_bms_ble_id}_soc
+      name: "${name} State of charge"
+    capacity_remaining:
+      id: ${jk_bms_ble_id}_capacity_remaining
+      name: "${name} Capacity remaining"
+    total_battery_capacity_setting:
+      id: ${jk_bms_ble_id}_total_battery_capacity_setting
+      name: "${name} Total battery capacity setting"
+    charging_cycles:
+      id: ${jk_bms_ble_id}_charging_cycles
+      name: "${name} Charging cycles"
+    total_charging_cycle_capacity:
+      id: ${jk_bms_ble_id}_total_charging_cycle_capacity
+      name: "${name} Total charging cycle capacity"
+      # Convert Ah to kAh
+      state_class: "total_increasing"
+      unit_of_measurement: kAh
+      icon: mdi:counter
+      accuracy_decimals: 3
+      filters:
+        - multiply: 0.001
+    total_runtime:
+      id: ${jk_bms_ble_id}_total_runtime
+      name: "${name} Total runtime"
+    balancing_current:
+      id: ${jk_bms_ble_id}_balancing_current
+      name: "${name} Balancing current"
+      unit_of_measurement: A
+      device_class: current
+      state_class: measurement
+    errors_bitmask:
+      id: ${jk_bms_ble_id}_errors_bitmask
+      name: "${name} errors bitmask"
+
+  - platform: total_daily_energy
+    name: "${name} Total Charging Energy Today"
+    power_id: ${jk_bms_ble_id}_charging_power
+    unit_of_measurement: kWh
+    icon: mdi:counter
+    accuracy_decimals: 3
+    restore: true
+    filters:
+      - multiply: 0.001
+
+  - platform: total_daily_energy
+    name: "${name} Total Discharging Energy Today"
+    power_id: ${jk_bms_ble_id}_discharging_power
+    unit_of_measurement: kWh
+    icon: mdi:counter
+    accuracy_decimals: 3
+    restore: true
+    filters:
+      - multiply: 0.001
+
+switch:
+  - platform: jk_bms_ble
+    charging:
+      id: ${jk_bms_ble_id}_charging_switch
+      name: "${name} Charging"
+    discharging:
+      id: ${jk_bms_ble_id}_discharging_switch
+      name: "${name} Discharging"
+    balancer:
+      id: ${jk_bms_ble_id}_balancer_switch
+      name: "${name} Balancer"
+    emergency:
+      id: ${jk_bms_ble_id}_emergency_switch
+      name: "${name} emergency"
+    disable_temperature_sensors:
+      id: ${jk_bms_ble_id}_disable_temperature_sensors_switch
+      name: "${name} Disable temperature sensors"
+    display_always_on:
+      id: ${jk_bms_ble_id}_display_always_on_switch
+      name: "${name} Display always on"
+
+  - platform: ble_client
+    ble_client_id: ${bms_client}
+    id: ${jk_bms_ble_id}_bluetooth_switch
+    name: "${name} enable bluetooth connection"
+
+text_sensor:
+  - platform: version
+    name: "${name} ESPHome Version"
+
+  - platform: wifi_info
+    ip_address:
+      name: "${name} ${device_name} IP"
+      update_interval: 120s
+    ssid:
+      name: "${name} ${device_name} SSID"
+      update_interval: 120s
+    bssid:
+      name: "${name} ${device_name} BSSID"
+      update_interval: 120s
+    mac_address:
+      name: "${name} ${device_name} MAC"
+    scan_results:
+      name: "${name} ${device_name} Latest Scan Results"
+      update_interval: 120s
+
+  - platform: template
+    name: "${name} Uptime Human Readable"
+    id: ${device_id}_uptime_human
+    icon: mdi:clock-start
+    update_interval: 120s
+
+  - platform: jk_bms_ble
+    errors:
+      id: ${jk_bms_ble_id}_errors
+      name: "${name} errors"
+      
+    total_runtime_formatted:
+      id: ${jk_bms_ble_id}_total_runtime_formatted
+      name: "${name} Total runtime formatted"
+
+interval:
+  - interval: 2s
+    then:
+      - canbus.send:
+          use_extended_id: true
+          can_id: 0x00001872
+          canbus_id: canbus0
+          # charging voltage, minimal voltage,  charging current,  discharging current
+          data: !lambda |-
+            /*
+            Soltaro protocol
+            ==============
+
+            ID 0x1872.
+
+                2:1 has maximum charge voltage
+                4:3 has minimum battery voltage during discharge (may not act on this value as yet)
+                6:5 is max charge current, tenths of an amp, total for all packs (similarly for Pylontech, LIB, or LIC)
+                8:7 is max discharge current, tenths of an amp, total for all packs (similarly for Pylontech, LIB, or LIC)
+                Send this message continuously for BMS to maintain "connected" status. 
+             */
+            uint8_t can_mesg[8] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+            uint16_t bms_max_v  = id(${device_id}_default_bulk); // Bulk, Float Voltage
+            uint16_t bms_min_v  = id(${device_id}_default_cutoff); // Cut-Off Voltage
+            int bms_max_ch = id(${device_id}_charge_current).state * 10; // Max Charging Current
+            //uint16_t bms_max_ch = id(${device_id}_charge_current).state * 10
+            uint16_t bms_max_d  = id(${jk_bms_ble_id}_max_discharge_current).state * 10; // Max Discharging Current -- not working
+            //id(overload).publish_state(true);
+            ESP_LOGD("CAN", "Bulk/Float V %d, Cut-Off V %d, Charge A %d, Discharge A %d ", bms_max_v, bms_min_v, bms_max_ch, bms_max_d);
+            can_mesg[0] = bms_max_v & 0x00FF; // 1
+            can_mesg[1] = (bms_max_v >> 8) & 0x00FF; // 2
+            can_mesg[2] = bms_min_v & 0x00FF; // 3
+            can_mesg[3] = (bms_min_v >> 8) & 0x00FF; // 4
+            can_mesg[4] = bms_max_ch & 0x00FF; // 5
+            can_mesg[5] = (bms_max_ch >> 8) & 0x00FF; // 6
+            can_mesg[6] = bms_max_d & 0x00FF; // 7
+            can_mesg[7] = (bms_max_d >> 8) & 0x00FF; // 8
+            ESP_LOGI("CAN", "send can id: 0x00001872 hex: %x %x %x %x %x %x %x %x", can_mesg[0], can_mesg[1], can_mesg[2], can_mesg[3], can_mesg[4], can_mesg[5], can_mesg[6], can_mesg[7]);
+            return {can_mesg[0], can_mesg[1], can_mesg[2], can_mesg[3], can_mesg[4], can_mesg[5], can_mesg[6], can_mesg[7]};
+
+  #- interval: 2s
+  #  then:
+      - canbus.send:
+          use_extended_id: true
+          can_id: 0x00001874
+          canbus_id: canbus0
+          # battery voltage, absorption voltage (not function), battery SOC, number of battery packs
+          data: !lambda |-
+            /*
+            ID 0x1874.
+
+                2:1 has battery voltage in tenths, e.g. 123 means 12.3V.
+                abs(4:3) stored but never used??
+                byte 5 has BMS% 0-100 in units of 1%
+                byte 8 has newNumPacks. When 3 such messages are received, this becomes the new number of packs.
+                    Otherwise, Number of packs and groups set to 1
+             */
+            uint8_t can_mesg[8] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+            uint16_t bms_compl_v = (id(${jk_bms_ble_id}_total_voltage).state * 10.0f); // Total Voltage
+            uint16_t bms_abs = id(${device_id}_default_absorb); // Absorb Voltage
+            uint16_t bms_soc = id(${jk_bms_ble_id}_soc).state; // SoC
+            uint8_t bms_num_pack = 1;
+            ESP_LOGD("CAN", "Total V %d, Absordb V %d, SoC %d, Pack # %d ", bms_compl_v, bms_abs, bms_soc, bms_num_pack);
+            if (0 < bms_soc && bms_soc <= 100) {
+              //id(bms_charging_comp).publish_state(true);
+              can_mesg[0] = bms_compl_v & 0x00FF; // 1
+              can_mesg[1] = (bms_compl_v >> 8) & 0x00FF; // 2
+              can_mesg[2] = bms_abs & 0x00FF; // 3
+              can_mesg[3] = (bms_abs >> 8) & 0x00FF; // 4
+              can_mesg[4] = bms_soc & 0x00FF; // 5
+              //can_mesg[5] = 0x00; // 6
+              //can_mesg[6] = 0x00; // 7
+              can_mesg[7] = bms_num_pack; // 8
+              ESP_LOGI("CAN", "send can id: 0x00001874 hex: %x %x %x %x %x %x %x %x", can_mesg[0], can_mesg[1], can_mesg[2], can_mesg[3], can_mesg[4], can_mesg[5], can_mesg[6], can_mesg[7]);
+            }
+            return {can_mesg[0], can_mesg[1], can_mesg[2], can_mesg[3], can_mesg[4], can_mesg[5], can_mesg[6], can_mesg[7]};
+
+      - canbus.send:
+          use_extended_id: true
+          can_id: 0x00001875
+          canbus_id: canbus0
+          # Stop charging, dischargings
+          data: !lambda |-
+            /*
+            The next 3 messages use a "force byte", formatted as follows:
+
+                bits 7,6,5: set any of these bits to stop charge and discharge.
+                bits 4,1,0: set any of these bits to stop charging.
+                bits 3,2: set either of these bits to force charging. 
+
+            ID 0x1875.
+
+                Bytes 1, 3, 5, and 7 are all force bytes as above. 
+                Bytes 2, 4, 6 and 8 are copied but as far as I can tell are ignored. Does not take effect till a 0x187B message. 
+                    It's probably good practice to set all data other than byte 1 to zeroes, as the code checks all bytes, 
+                    and you might get unintended forcing. To turn off these force bits, send this message with the appropriate bits cleared.
+             */
+            uint8_t can_mesg[8] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+            ESP_LOGD("CAN", "Charge Switch %d, Charge %d, Discharge Switch %d, Discharge %d", id(${jk_bms_ble_id}_charging_switch).state, id(${jk_bms_ble_id}_charging).state, id(${jk_bms_ble_id}_discharging_switch).state, id(${jk_bms_ble_id}_discharging).state);
+            uint8_t bms_stop_charge = 0; //(1 - id(${jk_bms_ble_id}_discharging_switch).state); // Charge ?
+            uint8_t bms_stop_discharge = 0; // (1 - id(${jk_bms_ble_id}_discharging_switch).state); // Discharge ?
+            if (id(${jk_bms_ble_id}_charging_switch).state) {
+              bms_stop_charge = 0;
+            } else {
+              bms_stop_charge = 1;
+            }
+            if (id(${jk_bms_ble_id}_discharging_switch).state) {
+              bms_stop_discharge = 0;
+            } else {
+              bms_stop_discharge = 1;
+            }
+            uint8_t charge_discharge = 0;
+            uint8_t charge_discharge2 = 0;
+            charge_discharge |= bms_stop_charge << 0;
+            charge_discharge |= bms_stop_discharge << 5;
+            charge_discharge2 |= 1 << 0;
+            charge_discharge2 |= 1 << 5;
+            std::string str_charge_discharge = std::bitset<8>(charge_discharge).to_string();
+            std::string str_charge_discharge2 = std::bitset<8>(charge_discharge2).to_string();
+            uint8_t u_charge_discharge2[8] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+            for (int i = 0; i < 8; i++)
+              u_charge_discharge2[i] = str_charge_discharge2[i] - '0';
+            ESP_LOGD("CAN", "Stop charge %d, Stop discharge %d - %d, %s, %s, %x %x %x %x %x %x %x %x - %d", bms_stop_charge, bms_stop_discharge, charge_discharge, str_charge_discharge.c_str(), str_charge_discharge2.c_str(), u_charge_discharge2[0], u_charge_discharge2[1], u_charge_discharge2[2], u_charge_discharge2[3], u_charge_discharge2[4], u_charge_discharge2[5], u_charge_discharge2[6], u_charge_discharge2[7], charge_discharge2);
+            can_mesg[0] = charge_discharge;
+            ESP_LOGI("CAN", "send can id: 0x00001875 hex: %x %x %x %x %x %x %x %x", can_mesg[0], can_mesg[1], can_mesg[2], can_mesg[3], can_mesg[4], can_mesg[5], can_mesg[6], can_mesg[7]);
+            return {can_mesg[0], can_mesg[1], can_mesg[2], can_mesg[3], can_mesg[4], can_mesg[5], can_mesg[6], can_mesg[7]};
+
+      - canbus.send:
+          use_extended_id: true
+          can_id: 0x0000187B
+          canbus_id: canbus0
+          # Activate flags
+          data: !lambda |-
+            /*
+            ID 0x187B.
+
+                All data ignored. Three of these messages cause the force bits as set by either of the above two messages to take effect. 
+            	[ Edit: I can't see where this needs to be sent 3 times now; probably it only needs to be sent once. ] 
+             */
+            uint8_t can_mesg[8] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+            ESP_LOGI("CAN", "send can id: 0x0000187B hex: %x %x %x %x %x %x %x %x", can_mesg[0], can_mesg[1], can_mesg[2], can_mesg[3], can_mesg[4], can_mesg[5], can_mesg[6], can_mesg[7]);
+            return {can_mesg[0], can_mesg[1], can_mesg[2], can_mesg[3], can_mesg[4], can_mesg[5], can_mesg[6], can_mesg[7]};
