@@ -159,20 +159,6 @@ canbus:
     use_extended_id: true
     bit_rate: 500kbps
 
-globals:
-  - id: ${device_id}_default_absorb
-    type: float
-    restore_value: yes
-    initial_value: '554'
-  - id: ${device_id}_default_bulk
-    type: float
-    restore_value: yes
-    initial_value: '554'
-  - id: ${device_id}_default_cutoff
-    type: float
-    restore_value: yes
-    initial_value: '480'
-
 binary_sensor:
   #- platform: gpio
   #  pin:
@@ -293,6 +279,53 @@ number:
     restore_value: true
     icon: mdi:sine-wave
     device_class: current
+    unit_of_measurement: A
+
+  - platform: template
+    name: BMS Final Charge Current
+    id: ${device_id}_final_charge_current
+    min_value: 10
+    max_value: 120
+    step: 10
+    optimistic: true
+    restore_value: true
+    icon: mdi:sine-wave
+    device_class: current
+    unit_of_measurement: A
+
+  - platform: template
+    name: BMS Final Charge SoC
+    id: ${device_id}_final_charge_soc
+    min_value: 0
+    max_value: 100
+    step: 1
+    optimistic: true
+    restore_value: true
+    #unit_of_measurement: %
+
+  - platform: template
+    name: BMS Bulk/Absorb/Float Voltage
+    id: ${device_id}_bulk_voltage
+    min_value: 40.0
+    max_value: 58.4
+    step: 0.1
+    optimistic: true
+    restore_value: true
+    #icon: mdi:sine-wave
+    device_class: voltage
+    unit_of_measurement: V
+
+  - platform: template
+    name: BMS Cut-Off Voltage
+    id: ${device_id}_cutoff_voltage
+    min_value: 40.0
+    max_value: 58.4
+    step: 0.1
+    optimistic: true
+    restore_value: true
+    #icon: mdi:sine-wave
+    device_class: voltage
+    unit_of_measurement: V
 
 sensor:
   - platform: wifi_signal
@@ -610,13 +643,16 @@ interval:
                 Send this message continuously for BMS to maintain "connected" status. 
              */
             uint8_t can_mesg[8] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-            uint16_t bms_max_v  = id(${device_id}_default_bulk); // Bulk, Float Voltage
-            uint16_t bms_min_v  = id(${device_id}_default_cutoff); // Cut-Off Voltage
-            int bms_max_ch = id(${device_id}_charge_current).state * 10; // Max Charging Current
-            //uint16_t bms_max_ch = id(${device_id}_charge_current).state * 10
+            uint16_t bms_max_v      = int(id(${device_id}_bulk_voltage).state * 10); // Bulk, Float Voltage
+            uint16_t bms_min_v      = int(id(${device_id}_cutoff_voltage).state * 10); // Cut-Off Voltage
+            uint16_t bms_final_curr = int(id(${device_id}_final_charge_current).state * 10);
+            uint16_t bms_soc        = id(${jk_bms_ble_id}_soc).state; // SoC
+            uint16_t bms_final_soc  = int(id(${device_id}_final_charge_soc).state);
+            int bms_max_ch          = id(${device_id}_charge_current).state * 10; // Max Charging Current
+            if (bms_soc >= bms_final_soc) bms_max_ch = bms_final_curr;
             uint16_t bms_max_d  = id(${jk_bms_ble_id}_max_discharge_current).state * 10; // Max Discharging Current -- not working
-            //id(overload).publish_state(true);
-            ESP_LOGD("CAN", "Bulk/Float V %d, Cut-Off V %d, Charge A %d, Discharge A %d ", bms_max_v, bms_min_v, bms_max_ch, bms_max_d);
+
+            ESP_LOGD("CAN", "Bulk/Float dV %d, Cut-Off dV %d, Charge %d dA, Discharge %d dA,  Final SoC %d, Final Charge Current %d dA", bms_max_v, bms_min_v, bms_max_ch, bms_max_d, bms_final_soc, bms_final_curr);
             can_mesg[0] = bms_max_v & 0x00FF; // 1
             can_mesg[1] = (bms_max_v >> 8) & 0x00FF; // 2
             can_mesg[2] = bms_min_v & 0x00FF; // 3
@@ -646,8 +682,8 @@ interval:
                     Otherwise, Number of packs and groups set to 1
              */
             uint8_t can_mesg[8] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-            uint16_t bms_compl_v = (id(${jk_bms_ble_id}_total_voltage).state * 10.0f); // Total Voltage
-            uint16_t bms_abs = id(${device_id}_default_absorb); // Absorb Voltage
+            uint16_t bms_compl_v = int(id(${jk_bms_ble_id}_total_voltage).state) * 10; // Total Voltage
+            uint16_t bms_abs = int(id(${device_id}_bulk_voltage).state * 10); // Absorb Voltage
             uint16_t bms_soc = id(${jk_bms_ble_id}_soc).state; // SoC
             uint8_t bms_num_pack = 1;
             ESP_LOGD("CAN", "Total V %d, Absordb V %d, SoC %d, Pack # %d ", bms_compl_v, bms_abs, bms_soc, bms_num_pack);
